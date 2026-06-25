@@ -6,11 +6,11 @@ Archipelago world for **Heroes of the Storm**.
 
 1. **Install the APWorld** from [Releases](https://github.com/POD-io/HotS-ArchipelagoWorld/releases/latest).
 
-2. **Generate a multiworld** - Add a player YAML (see `Heroes of the Storm.yaml`), generate the seed, and start or join the multiworld server.
+2. **Generate a multiworld** - Add your player YAML (see `Heroes of the Storm.yaml`) into any generated Archipelago world.
 
-3. **Launch the client** - Open Archipelago and start the **Heroes of the Storm** client.
+3. **Launch the client** - Open the Archipelago Launcher and start the **Heroes of the Storm Client**.
 
-4. **Play normally** - Queue Quick Match, Versus AI, or any other mode in HotS. Use heroes you have unlocked from the multiworld.
+4. **Play normally** - Play Quick Match, Versus AI, or any other mode in HotS. Use heroes you have unlocked from the multiworld.
 
 5. **Checks from replays** - After each game, HotS saves a replay. The client will detect and read the replay file automatically and send any completed checks. Set your battle tag once with `/name` if replays are skipped.
 
