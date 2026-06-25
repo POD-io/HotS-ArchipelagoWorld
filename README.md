@@ -1,6 +1,6 @@
-## Heroes of the Storm - Archipelago World
+# Heroes of the Storm - Archipelago World
 
-### Setup Guide
+## Setup Guide
 
 1. **Install the APWorld** from [Releases](https://github.com/POD-io/HotS-ArchipelagoWorld/releases/latest).
 
@@ -12,9 +12,9 @@
 
 5. **Checks from replays** - After each game, HotS saves a replay. The client will detect and read the replay file automatically and send any completed checks.
 
-### Troubleshooting / Technical Details
+## Troubleshooting / Technical Details
 
-#### Replay folder detection
+### Replay folder detection
 
 On connect, the client looks for replay folders under:
 
@@ -35,14 +35,14 @@ Settings are saved in **`hots_config.json`** in your Archipelago user data folde
 ```
 Or paste the path when prompted on first launch. Restart the client after editing the file.
 
-#### Player name (Battle Tag)
+### Player name (Battle Tag)
 The client matches replays to your slot using your in-game battle tag (player name).
 
 Set in client: /name YourBattleTag
 Or edit hots_config.json: "battle_tag": "YourBattleTag"
 If replays are skipped, run /name with no args to compare your saved name vs. what your latest replay shows.
 
-#### Rescanning the latest replay
+### Rescanning the latest replay
 Existing replays are ignored when you connect, only new matches after that are processed automatically.
 
 To re-check your most recent game (missed checks, wrong name, etc.):
