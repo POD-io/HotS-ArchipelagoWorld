@@ -11,7 +11,10 @@ from CommonClient import (
     CommonContext, ClientCommandProcessor, server_loop, logger, get_base_parser, gui_enabled,
 )
 from Utils import user_path
-from .Challenges import HERO_CHECKS, ALL_HEROES, detect_checks, hero_from_replay_name, location_name, get_role
+from .Challenges import (
+    HERO_CHECKS, ALL_HEROES, detect_checks, hero_from_replay_name, location_name,
+    get_pass_key, pass_key_from_item_name,
+)
 from .Locations import location_name_to_id
 from .ReplayParser import battle_tags_match, parse_replay
 from .Tracker import HoTSTracker
@@ -269,9 +272,9 @@ class HoTSClient(CommonContext):
                 if name not in self.unlocked_heroes:
                     self.unlocked_heroes.add(name)
             elif name.endswith(" Pass"):
-                role = name[: -len(" Pass")].lower()
-                if role not in self.unlocked_roles:
-                    self.unlocked_roles.add(role)
+                pass_key = pass_key_from_item_name(name)
+                if pass_key and pass_key not in self.unlocked_roles:
+                    self.unlocked_roles.add(pass_key)
         if self.tracker:
             self.tracker.refresh()
 
@@ -280,7 +283,7 @@ class HoTSClient(CommonContext):
             return False
         if hero not in self.unlocked_heroes:
             return False
-        if self.use_role_passes and get_role(hero) not in self.unlocked_roles:
+        if self.use_role_passes and get_pass_key(hero) not in self.unlocked_roles:
             return False
         return True
 

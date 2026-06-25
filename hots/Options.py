@@ -96,7 +96,7 @@ class GoalHero(TextChoice):
 
 
 class RolePasses(DefaultOnToggle):
-    """When on, each hero needs its unlock item and a role pass; when off, only the unlock item."""
+    """When on, each hero needs its unlock item and a role pass (Tank, Bruiser, Support, Melee Assassin, or Ranged Assassin). Healers and utility supports use Support Pass."""
     display_name = "Role Passes"
 
 
@@ -114,8 +114,8 @@ class HeroPoolSize(Range):
 class RemoveHardestChecks(DefaultOnToggle):
     """
     When off, every role keeps all checks. When on, each role drops its hardest checks:
-    highest takedown count, highest heal/siege/damage, 8 assists(support),
-    level 20, and 12k XP.
+    highest takedown count, highest hero/heal/siege/damage tier, 8 assists (healers),
+    3 solo kills (melee assassins), level 20, and 12k XP.
     """
     display_name = "Remove Hardest Checks"
     default = 0

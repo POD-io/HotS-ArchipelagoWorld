@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from BaseClasses import ItemClassification
-from .Challenges import ALL_HEROES
+from .Challenges import ALL_HEROES, PASS_KEYS, PASS_NAMES
 
 HOTS_ITEM_BASE = 8889000
 
@@ -19,13 +19,12 @@ hero_unlock_items: dict[str, HoTSItemData] = {
     for idx, hero in enumerate(ALL_HEROES)
 }
 
-ROLES = ["assassin", "warrior", "support", "specialist"]
 role_pass_items: dict[str, HoTSItemData] = {
-    f"{role.capitalize()} Pass": HoTSItemData(
+    PASS_NAMES[pass_key]: HoTSItemData(
         id=HOTS_ITEM_BASE + 200 + idx,
         classification=ItemClassification.progression,
     )
-    for idx, role in enumerate(ROLES)
+    for idx, pass_key in enumerate(PASS_KEYS)
 }
 
 FILLER_ITEM_NAME = "Void Scrap"

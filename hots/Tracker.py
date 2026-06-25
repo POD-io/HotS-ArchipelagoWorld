@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .Challenges import get_role, HERO_CHECKS
+from .Challenges import get_pass_key, get_role, pass_name_for_key, role_display, PASS_KEYS, HERO_CHECKS
 from .Locations import location_table
 
 
@@ -14,7 +14,7 @@ class HoTSTracker:
     def has_role_pass(self, hero: str) -> bool:
         if not self.ctx.use_role_passes:
             return True
-        return get_role(hero) in self.ctx.unlocked_roles
+        return get_pass_key(hero) in self.ctx.unlocked_roles
 
     def hero_unlocked(self, hero: str) -> bool:
         if hero not in self.ctx.enabled_heroes:
@@ -34,12 +34,11 @@ class HoTSTracker:
         return data.id in self.ctx.checked_locations
 
     def _unlock_needs(self, hero: str) -> str:
-        role = get_role(hero)
         needs: list[str] = []
         if not self.has_hero_unlock(hero):
             needs.append(hero)
         if self.ctx.use_role_passes and not self.has_role_pass(hero):
-            needs.append(f"{role.capitalize()} Pass")
+            needs.append(pass_name_for_key(get_pass_key(hero)))
         return " + ".join(needs)
 
     def _hero_check_count(self, hero: str) -> int:
@@ -100,7 +99,7 @@ class HoTSTracker:
             else:
                 rows.append({"text": f"{hero} — needs {needs or '?'}"})
             if self.ctx.use_role_passes:
-                pass_name = f"{role.capitalize()} Pass"
+                pass_name = pass_name_for_key(get_pass_key(hero))
                 rows.append(
                     self._line(f"  {pass_name}", done=pass_ok)
                     if pass_ok
@@ -150,7 +149,7 @@ class HoTSTracker:
             checks = sorted(by_hero[hero])
             if not checks:
                 continue
-            rows.append({"text": f"--- {hero} ({get_role(hero)}) ---"})
+            rows.append({"text": f"--- {hero} ({role_display(get_role(hero))}) ---"})
             for name in checks:
                 rows.append({"text": f"  {name.split(': ', 1)[-1]}"})
 
@@ -169,11 +168,11 @@ class HoTSTracker:
 
         if self.ctx.use_role_passes:
             rows.append({"text": "Role passes:"})
-            for role in ("assassin", "warrior", "support", "specialist"):
-                label = f"{role.capitalize()} Pass"
+            for pass_key in PASS_KEYS:
+                label = pass_name_for_key(pass_key)
                 rows.append(
-                    self._line(f"  {label}", done=role in self.ctx.unlocked_roles)
-                    if role in self.ctx.unlocked_roles
+                    self._line(f"  {label}", done=pass_key in self.ctx.unlocked_roles)
+                    if pass_key in self.ctx.unlocked_roles
                     else {"text": f"  {label}"}
                 )
             rows.append({"text": ""})
@@ -182,7 +181,7 @@ class HoTSTracker:
         for hero in sorted(self.ctx.enabled_heroes):
             role = get_role(hero)
             unlocked = self.hero_unlocked(hero)
-            suffix = f" ({role}, {self._hero_check_count(hero)} checks)"
+            suffix = f" ({role_display(role)}, {self._hero_check_count(hero)} checks)"
             if unlocked:
                 rows.append(self._line(f"  {hero}{suffix}", done=True))
             else:

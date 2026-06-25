@@ -32,96 +32,135 @@ MERC_2 = "merc_2"
 COMMON_CHECKS = [WIN, XP_8K, XP_12K, LEVEL_20]
 
 CHECK_DESCRIPTIONS: dict[str, str] = {
-    WIN:           "Win a match",
-    XP_8K:         "Collect 8,000 experience",
-    XP_12K:        "Collect 12,000 experience",
-    LEVEL_20:      "Reach level 20",
-    TAKEDOWNS_1:   "Get 1 takedown",
-    TAKEDOWNS_5:   "Get 5 takedowns",
-    TAKEDOWNS_10:  "Get 10 takedowns",
-    TAKEDOWNS_15:  "Get 15 takedowns",
-    HERO_25K:      "Deal 25,000 hero damage",
-    HERO_40K:      "Deal 40,000 hero damage",
-    HERO_50K:      "Deal 50,000 hero damage",
-    SIEGE_50K:     "Deal 50,000 siege damage",
-    SIEGE_75K:     "Deal 75,000 siege damage",
-    SIEGE_100K:    "Deal 100,000 siege damage",
-    HEALING_40K:   "Restore 40,000 health",
-    HEALING_60K:   "Restore 60,000 health",
-    SOLO_KILL_1:   "Get 1 solo kill",
-    SOLO_KILL_3:   "Get 3 solo kills",
-    MINION_15:     "Kill 15 minions",
-    MINION_25:     "Kill 25 minions",
-    MINION_40:     "Kill 40 minions",
-    MINION_50:     "Kill 50 minions",
-    ASSISTS_8:     "Get 8 assists",
-    MERC_2:        "Capture 2 mercenary camps",
+    WIN:                 "Win a match",
+    XP_8K:               "Collect 8,000 experience",
+    XP_12K:              "Collect 12,000 experience",
+    LEVEL_20:            "Reach level 20",
+    TAKEDOWNS_1:         "Get 1 takedown",
+    TAKEDOWNS_5:         "Get 5 takedowns",
+    TAKEDOWNS_10:        "Get 10 takedowns",
+    TAKEDOWNS_15:        "Get 15 takedowns",
+    HERO_25K:            "Deal 25,000 hero damage",
+    HERO_40K:            "Deal 40,000 hero damage",
+    HERO_50K:            "Deal 50,000 hero damage",
+    SIEGE_50K:           "Deal 50,000 siege damage",
+    SIEGE_75K:           "Deal 75,000 siege damage",
+    SIEGE_100K:          "Deal 100,000 siege damage",
+    HEALING_40K:         "Restore 40,000 health",
+    HEALING_60K:         "Restore 60,000 health",
+    SOLO_KILL_1:         "Get 1 solo kill",
+    SOLO_KILL_3:         "Get 3 solo kills",
+    MINION_15:           "Kill 15 minions",
+    MINION_25:           "Kill 25 minions",
+    MINION_40:           "Kill 40 minions",
+    MINION_50:           "Kill 50 minions",
+    ASSISTS_8:           "Get 8 assists",
+    MERC_2:              "Capture 2 mercenary camps",
 }
 
 ROLE_CHECKS: dict[str, list[str]] = {
-    "assassin": COMMON_CHECKS + [
+    "tank": COMMON_CHECKS + [
+        TAKEDOWNS_5, TAKEDOWNS_10, TAKEDOWNS_15,
+        HERO_25K,
+        ASSISTS_8,
+        MERC_2,
+    ],
+    "bruiser": COMMON_CHECKS + [
+        TAKEDOWNS_5, TAKEDOWNS_10, TAKEDOWNS_15,
+        HERO_40K, HERO_50K,
+        SOLO_KILL_1,
+        MERC_2,
+    ],
+    "healer": COMMON_CHECKS + [
+        TAKEDOWNS_1, TAKEDOWNS_5, TAKEDOWNS_10,
+        HEALING_40K, HEALING_60K,
+        ASSISTS_8,
+    ],
+    "support": COMMON_CHECKS + [
+        TAKEDOWNS_1, TAKEDOWNS_5, TAKEDOWNS_10,
+        ASSISTS_8,
+        SIEGE_50K,
+    ],
+    "melee_assassin": COMMON_CHECKS + [
         TAKEDOWNS_5, TAKEDOWNS_10, TAKEDOWNS_15,
         HERO_50K,
         SOLO_KILL_1, SOLO_KILL_3,
-        MINION_40,
     ],
-    "warrior": COMMON_CHECKS + [
+    "ranged_assassin": COMMON_CHECKS + [
         TAKEDOWNS_5, TAKEDOWNS_10, TAKEDOWNS_15,
-        HERO_25K, HERO_40K,
-        SOLO_KILL_1,
-        MINION_25,
-        MERC_2,
-    ],
-    "support": COMMON_CHECKS + [
-        TAKEDOWNS_1, TAKEDOWNS_5,
-        HEALING_40K, HEALING_60K,
-        MINION_15,
-        ASSISTS_8,
-    ],
-    "specialist": COMMON_CHECKS + [
-        TAKEDOWNS_5, TAKEDOWNS_10,
-        SIEGE_50K, SIEGE_75K, SIEGE_100K,
-        MINION_50,
-        MERC_2,
+        HERO_50K,
+        SIEGE_50K, SIEGE_75K,
     ],
 }
 
 HERO_ROLES: dict[str, str] = {
-    "Alexstrasza": "support", "Ana": "support", "Anduin": "support",
-    "Auriel": "support", "Brightwing": "support", "Deckard": "support",
-    "Kharazim": "support", "Li Li": "support", "Lt. Morales": "support",
-    "Lúcio": "support", "Malfurion": "support", "Rehgar": "support",
-    "Stukov": "support", "Tyrande": "support", "Uther": "support",
-    "Whitemane": "support",
-    "Abathur": "specialist", "Azmodan": "specialist", "Blaze": "specialist",
-    "Dehaka": "specialist", "Gazlowe": "specialist", "Hogger": "specialist",
-    "Leoric": "specialist", "The Lost Vikings": "specialist", "Malthael": "specialist",
-    "Medivh": "specialist", "Murky": "specialist", "Probius": "specialist",
-    "Ragnaros": "specialist", "Rexxar": "specialist", "Samuro": "specialist",
-    "Sonya": "specialist", "Xul": "specialist", "Zagara": "specialist",
-    "Zeratul": "specialist", "Chromie": "specialist", "Nazeebo": "specialist",
-    "Falstad": "specialist",
-    "Anub'arak": "warrior", "Arthas": "warrior", "Artanis": "warrior",
-    "Chen": "warrior", "Cho": "warrior", "Deathwing": "warrior",
-    "Diablo": "warrior", "D.Va": "warrior", "E.T.C.": "warrior",
-    "Garrosh": "warrior", "Imperius": "warrior", "Johanna": "warrior",
-    "Mal'Ganis": "warrior", "Mei": "warrior", "Muradin": "warrior",
-    "Stitches": "warrior", "The Butcher": "warrior", "Tyrael": "warrior",
-    "Varian": "warrior", "Yrel": "warrior", "Zarya": "warrior",
+    # Tank
+    "Anub'arak": "tank", "Arthas": "tank", "Blaze": "tank", "Cho": "tank",
+    "Diablo": "tank", "E.T.C.": "tank", "Garrosh": "tank", "Johanna": "tank",
+    "Mal'Ganis": "tank", "Muradin": "tank", "Stitches": "tank", "Tyrael": "tank",
+    # Bruiser
+    "Artanis": "bruiser", "Chen": "bruiser", "D.Va": "bruiser", "Dehaka": "bruiser",
+    "Deathwing": "bruiser", "Imperius": "bruiser", "Leoric": "bruiser",
+    "Malthael": "bruiser", "Mei": "bruiser", "Ragnaros": "bruiser", "Rexxar": "bruiser",
+    "Sonya": "bruiser", "Thrall": "bruiser", "Varian": "bruiser", "Xul": "bruiser",
+    "Yrel": "bruiser",
+    # Healer
+    "Alexstrasza": "healer", "Ana": "healer", "Anduin": "healer", "Auriel": "healer",
+    "Brightwing": "healer", "Deckard": "healer", "Kharazim": "healer", "Li Li": "healer",
+    "Lt. Morales": "healer", "Lúcio": "healer", "Malfurion": "healer", "Rehgar": "healer",
+    "Stukov": "healer", "Tyrande": "healer", "Uther": "healer", "Whitemane": "healer",
+    # Support
+    "Abathur": "support", "Medivh": "support", "Tassadar": "support",
+    "The Lost Vikings": "support", "Zarya": "support",
+    # Melee Assassin
+    "Alarak": "melee_assassin", "Gazlowe": "melee_assassin", "Hogger": "melee_assassin",
+    "Illidan": "melee_assassin", "Kerrigan": "melee_assassin", "Maiev": "melee_assassin",
+    "Murky": "melee_assassin", "Qhira": "melee_assassin", "Samuro": "melee_assassin",
+    "The Butcher": "melee_assassin", "Valeera": "melee_assassin", "Zeratul": "melee_assassin",
+    # Ranged Assassin
+    "Azmodan": "ranged_assassin", "Cassia": "ranged_assassin", "Chromie": "ranged_assassin",
+    "Falstad": "ranged_assassin", "Fenix": "ranged_assassin", "Gall": "ranged_assassin",
+    "Genji": "ranged_assassin", "Greymane": "ranged_assassin", "Gul'dan": "ranged_assassin",
+    "Hanzo": "ranged_assassin", "Jaina": "ranged_assassin", "Junkrat": "ranged_assassin",
+    "Kael'thas": "ranged_assassin", "Kel'Thuzad": "ranged_assassin", "Li-Ming": "ranged_assassin",
+    "Lunara": "ranged_assassin", "Mephisto": "ranged_assassin", "Nazeebo": "ranged_assassin",
+    "Nova": "ranged_assassin", "Orphea": "ranged_assassin", "Probius": "ranged_assassin",
+    "Raynor": "ranged_assassin", "Sgt. Hammer": "ranged_assassin", "Sylvanas": "ranged_assassin",
+    "Tracer": "ranged_assassin", "Tychus": "ranged_assassin", "Valla": "ranged_assassin",
+    "Zagara": "ranged_assassin", "Zul'jin": "ranged_assassin",
 }
 
-ALL_HEROES: list[str] = sorted({
-    *HERO_ROLES.keys(),
-    "Alarak", "Cassia", "Chromie", "Falstad", "Fenix", "Gall", "Genji",
-    "Greymane", "Gul'dan", "Hanzo", "Illidan", "Jaina", "Junkrat",
-    "Kael'thas", "Kel'Thuzad", "Kerrigan", "Li-Ming", "Lunara", "Maiev",
-    "Mephisto", "Nazeebo", "Nova", "Orphea", "Qhira", "Raynor", "Sgt. Hammer",
-    "Sylvanas", "Tassadar", "Thrall", "Tracer", "Tychus", "Valeera",
-    "Valla", "Zul'jin",
-})
+ALL_HEROES: list[str] = sorted(HERO_ROLES.keys())
 
-for _hero in ALL_HEROES:
-    HERO_ROLES.setdefault(_hero, "assassin")
+PASS_KEYS: list[str] = ["tank", "bruiser", "support", "melee_assassin", "ranged_assassin"]
+
+PASS_NAMES: dict[str, str] = {
+    "tank": "Tank Pass",
+    "bruiser": "Bruiser Pass",
+    "support": "Support Pass",
+    "melee_assassin": "Melee Assassin Pass",
+    "ranged_assassin": "Ranged Assassin Pass",
+}
+
+ROLE_TO_PASS: dict[str, str] = {
+    "tank": "tank",
+    "bruiser": "bruiser",
+    "healer": "support",
+    "support": "support",
+    "melee_assassin": "melee_assassin",
+    "ranged_assassin": "ranged_assassin",
+}
+
+ROLE_DISPLAY: dict[str, str] = {
+    "tank": "Tank",
+    "bruiser": "Bruiser",
+    "healer": "Healer",
+    "support": "Support",
+    "melee_assassin": "Melee Assassin",
+    "ranged_assassin": "Ranged Assassin",
+}
+
+ITEM_NAME_TO_PASS_KEY: dict[str, str] = {name: key for key, name in PASS_NAMES.items()}
 
 _YAML_KEY_OVERRIDES: dict[str, str] = {
     "Anub'arak":          "Anubarak",
@@ -168,7 +207,25 @@ def yaml_key_to_hero(key: str) -> str | None:
 
 
 def get_role(hero: str) -> str:
-    return HERO_ROLES.get(hero, "assassin")
+    """Check-role tag used for location check lists."""
+    return HERO_ROLES[hero]
+
+
+def get_pass_key(hero: str) -> str:
+    """Pass bucket used for unlock items."""
+    return ROLE_TO_PASS[get_role(hero)]
+
+
+def pass_name_for_key(pass_key: str) -> str:
+    return PASS_NAMES[pass_key]
+
+
+def pass_key_from_item_name(item_name: str) -> str | None:
+    return ITEM_NAME_TO_PASS_KEY.get(item_name)
+
+
+def role_display(role: str) -> str:
+    return ROLE_DISPLAY.get(role, role.replace("_", " ").title())
 
 
 HERO_CHECKS: dict[str, list[str]] = {
@@ -177,10 +234,12 @@ HERO_CHECKS: dict[str, list[str]] = {
 }
 
 EASY_MODE_REMOVED: dict[str, frozenset[str]] = {
-    "assassin": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_50K}),
-    "warrior": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_40K}),
-    "support": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_5, HEALING_60K, ASSISTS_8}),
-    "specialist": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_10, SIEGE_100K}),
+    "tank": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_25K}),
+    "bruiser": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_50K}),
+    "healer": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_10, HEALING_60K, ASSISTS_8}),
+    "support": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_10, SIEGE_50K}),
+    "melee_assassin": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_50K, SOLO_KILL_3}),
+    "ranged_assassin": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_50K, SIEGE_75K}),
 }
 
 
@@ -190,6 +249,7 @@ def active_role_checks(role: str, remove_hardest: bool = False) -> list[str]:
         return list(checks)
     removed = EASY_MODE_REMOVED[role]
     return [check for check in checks if check not in removed]
+
 
 def _normalize_hero_name(name: str) -> str:
     folded = unicodedata.normalize("NFKD", name)
@@ -209,6 +269,7 @@ def hero_from_replay_name(replay_hero: str) -> str | None:
         if _normalize_hero_name(hero) == replay_norm:
             return hero
     return None
+
 
 def detect_checks(score: dict, result: str, level_history: list | None = None) -> set[str]:
     fired: set[str] = set()

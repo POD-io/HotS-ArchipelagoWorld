@@ -3,8 +3,8 @@ from Options import OptionError
 from worlds.AutoWorld import World, WebWorld
 from BaseClasses import Region, Item, ItemClassification
 from .Challenges import (
-    ALL_HEROES, HERO_CHECKS, WIN, active_role_checks, get_role, location_name,
-    CHECK_DESCRIPTIONS,
+    ALL_HEROES, HERO_CHECKS, WIN, active_role_checks, get_pass_key, get_role,
+    location_name, CHECK_DESCRIPTIONS, pass_key_from_item_name, pass_name_for_key,
 )
 from .Items import item_table, FILLER_ITEM_NAME, hero_unlock_items, role_pass_items
 from .Locations import location_table, HoTSLocation, locations_by_hero
@@ -133,19 +133,22 @@ class HoTSWorld(World):
 
         inv = {k: v for k, v in self.options.start_inventory.value.items() if v > 0}
         hero_inv = next((k for k in inv if k in ALL_HEROES), None)
-        pass_inv = next((k[:-5].lower() for k in inv if k.endswith(" Pass")), None)
+        pass_inv = next(
+            (key for k, v in inv.items() if v > 0 and (key := pass_key_from_item_name(k))),
+            None,
+        )
 
-        roles_needed = sorted({get_role(h) for h in self.enabled_heroes})
-        if self.use_role_passes and roles_needed:
+        pass_keys_needed = sorted({get_pass_key(h) for h in self.enabled_heroes})
+        if self.use_role_passes and pass_keys_needed:
             self.starting_role_pass = pass_inv or (
-                get_role(hero_inv) if hero_inv else self.random.choice(roles_needed)
+                get_pass_key(hero_inv) if hero_inv else self.random.choice(pass_keys_needed)
             )
             if hero_inv:
                 self.starting_hero = hero_inv
             else:
                 playable = [
                     h for h in self.enabled_heroes
-                    if get_role(h) == self.starting_role_pass
+                    if get_pass_key(h) == self.starting_role_pass
                 ]
                 self.starting_hero = self.random.choice(playable)
         else:
@@ -222,10 +225,10 @@ class HoTSWorld(World):
                 item_pool.append(self.create_item(hero))
 
         if self.use_role_passes:
-            roles_needed = sorted({get_role(h) for h in self.enabled_heroes})
-            for role in roles_needed:
-                if role != self.starting_role_pass:
-                    item_pool.append(self.create_item(f"{role.capitalize()} Pass"))
+            pass_keys_needed = sorted({get_pass_key(h) for h in self.enabled_heroes})
+            for pass_key in pass_keys_needed:
+                if pass_key != self.starting_role_pass:
+                    item_pool.append(self.create_item(pass_name_for_key(pass_key)))
 
         filler_needed = total_locations - len(item_pool)
         if filler_needed < 0:
@@ -245,7 +248,7 @@ class HoTSWorld(World):
         if start_inv.get(self.starting_hero, 0) <= 0:
             self.multiworld.push_precollected(self.create_item(self.starting_hero))
         if self.use_role_passes and self.starting_role_pass:
-            pass_name = f"{self.starting_role_pass.capitalize()} Pass"
+            pass_name = pass_name_for_key(self.starting_role_pass)
             if start_inv.get(pass_name, 0) <= 0:
                 self.multiworld.push_precollected(self.create_item(pass_name))
 
@@ -293,9 +296,9 @@ class HoTSWorld(World):
         spoiler_handle.write(f"Goal Summary:                    {self._goal_summary_text()}\n")
         spoiler_handle.write(f"Goal Heroes:                     {', '.join(self.goal_heroes)}\n")
         if self.use_role_passes:
-            goal_roles = sorted({get_role(hero) for hero in self.goal_heroes})
+            goal_passes = sorted({get_pass_key(hero) for hero in self.goal_heroes})
             spoiler_handle.write(
                 "Goal Role Passes Needed:         "
-                + ", ".join(f"{role.capitalize()} Pass" for role in goal_roles)
+                + ", ".join(pass_name_for_key(pass_key) for pass_key in goal_passes)
                 + "\n"
             )
