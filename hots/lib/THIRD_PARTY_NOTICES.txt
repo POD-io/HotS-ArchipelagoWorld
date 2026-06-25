@@ -1,0 +1,13 @@
+Bundled third-party libraries (hots/lib/)
+
+heroprotocol
+  Copyright 2015-2021 Blizzard Entertainment
+  MIT License — see LICENSE-heroprotocol.txt
+
+mpyq
+  Copyright (c) 2013-2015 Ross Schlaiker
+  See mpyq.py header for license terms
+
+six
+  Copyright (c) 2010-2024 Benjamin Peterson
+  MIT License — see six.py header

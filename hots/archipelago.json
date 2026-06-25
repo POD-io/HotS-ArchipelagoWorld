@@ -1,0 +1,10 @@
+{
+  "game": "Heroes of the Storm",
+  "minimum_ap_version": "0.6.3",
+  "world_version": "0.1.0",
+  "authors": [
+    "POD-io"
+  ],
+  "version": 1,
+  "compatible_version": 1
+}

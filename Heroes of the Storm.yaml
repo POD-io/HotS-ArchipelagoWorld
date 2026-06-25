@@ -1,0 +1,345 @@
+﻿# Q. What is this file?
+# A. This file contains options which allow you to configure your multiworld experience while allowing
+#    others to play how they want as well.
+#
+# Q. How do I use it?
+# A. The options in this file are weighted. This means the higher number you assign to a value, the
+#    more chances you have for that option to be chosen. For example, an option like this:
+#
+#    map_shuffle:
+#      on: 5
+#      off: 15
+#
+#    Means you have 5 chances for map shuffle to occur, and 15 chances for map shuffle to be turned
+#    off.
+#
+# Q. I've never seen a file like this before. What characters am I allowed to use?
+# A. This is a .yaml file. You are allowed to use most characters.
+#    To test if your yaml is valid or not, you can use this website:
+#        http://www.yamllint.com/
+#    You can also verify that your Archipelago options are valid at this site:
+#        https://archipelago.gg/check
+
+# Your name in-game, limited to 16 characters.
+#     {player} will be replaced with the player's slot number.
+#     {PLAYER} will be replaced with the player's slot number, if that slot number is greater than 1.
+#     {number} will be replaced with the counter value of the name.
+#     {NUMBER} will be replaced with the counter value of the name, if the counter value is greater than 1.
+name: Player{number}
+
+# Used to describe your yaml. Useful if you have multiple files.
+description: Default Heroes of the Storm Template
+
+game: Heroes of the Storm
+requires:
+  version: 0.6.7 # Version of Archipelago required for this yaml to work as expected.
+  game:
+    Heroes of the Storm: 0.1.0 # Version of the world required for this yaml to work as expected.
+
+Heroes of the Storm:
+  ################
+  # Game Options #
+  ################
+  progression_balancing:
+    # A system that can move progression earlier, to try and prevent the player from getting stuck and bored early.
+    # 
+    # A lower setting means more getting stuck. A higher setting means less getting stuck.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 99
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-99: 0 # random value between 0 and 99
+    disabled: 0 # equivalent to 0
+    normal: 50 # equivalent to 50
+    extreme: 0 # equivalent to 99
+
+  accessibility:
+    # Set rules for reachability of your items/locations.
+    # 
+    # **Full:** ensure everything can be reached and acquired.
+    # 
+    # **Minimal:** ensure what is needed to reach your goal can be acquired.
+    full: 50
+    minimal: 0
+
+  ##########
+  # Heroes #
+  ##########
+  enabled_heroes:
+    # Set each hero to 1 to enable them for use in this seed, or 0 to exclude them.
+    Abathur: 1
+    Alarak: 1
+    Alexstrasza: 1
+    Ana: 1
+    Anduin: 1
+    Anubarak: 1
+    Artanis: 1
+    Arthas: 1
+    Auriel: 1
+    Azmodan: 1
+    Blaze: 1
+    Brightwing: 1
+    Cassia: 1
+    Chen: 1
+    Cho: 1
+    Chromie: 1
+    DVa: 1
+    Deathwing: 1
+    Deckard: 1
+    Dehaka: 1
+    Diablo: 1
+    ETC: 1
+    Falstad: 1
+    Fenix: 1
+    Gall: 1
+    Garrosh: 1
+    Gazlowe: 1
+    Genji: 1
+    Greymane: 1
+    Guldan: 1
+    Hanzo: 1
+    Hogger: 1
+    Illidan: 1
+    Imperius: 1
+    Jaina: 1
+    Johanna: 1
+    Junkrat: 1
+    Kaelthas: 1
+    KelThuzad: 1
+    Kerrigan: 1
+    Kharazim: 1
+    Leoric: 1
+    LiLi: 1
+    LiMing: 1
+    LtMorales: 1
+    Lucio: 1
+    Lunara: 1
+    Maiev: 1
+    MalGanis: 1
+    Malfurion: 1
+    Malthael: 1
+    Medivh: 1
+    Mei: 1
+    Mephisto: 1
+    Muradin: 1
+    Murky: 1
+    Nazeebo: 1
+    Nova: 1
+    Orphea: 1
+    Probius: 1
+    Qhira: 1
+    Ragnaros: 1
+    Raynor: 1
+    Rehgar: 1
+    Rexxar: 1
+    Samuro: 1
+    SgtHammer: 1
+    Sonya: 1
+    Stitches: 1
+    Stukov: 1
+    Sylvanas: 1
+    Tassadar: 1
+    TheButcher: 1
+    TheLostVikings: 1
+    Thrall: 1
+    Tracer: 1
+    Tychus: 1
+    Tyrael: 1
+    Tyrande: 1
+    Uther: 1
+    Valeera: 1
+    Valla: 1
+    Varian: 1
+    Whitemane: 1
+    Xul: 1
+    Yrel: 1
+    Zagara: 1
+    Zarya: 1
+    Zeratul: 1
+    Zuljin: 1
+
+  hero_pool_size:
+    # Randomly include this many heroes from those set to 1 in Enabled Heroes.
+    # When Goal is specific_hero, the goal hero is always kept in the pool.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 90
+    0: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-90: 0 # random value between 0 and 90
+
+  remove_hardest_checks:
+    # When off, every role keeps all checks. When on, each role drops its hardest checks:
+    # highest takedown count, highest heal/siege/damage, 8 assists(support),
+    # level 20, and 12k XP.
+    'false': 50
+    'true': 0
+
+  ###########
+  # Victory #
+  ###########
+  goal:
+    # random_heroes: Complete all checks for N random enabled heroes.
+    # specific_hero: Complete all checks for one chosen hero.
+    # distinct_wins: Win one match each with N random enabled heroes.
+    random_heroes: 50
+    specific_hero: 0
+    distinct_wins: 0
+
+  goal_hero_count:
+    # Number of heroes used when Goal is random_heroes or distinct_wins.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 20
+    3: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-20: 0 # random value between 1 and 20
+
+  goal_hero:
+    # Hero to complete when Goal is specific_hero.
+    abathur: 0
+    alarak: 50
+    alexstrasza: 0
+    ana: 0
+    anduin: 0
+    anubarak: 0
+    artanis: 0
+    arthas: 0
+    auriel: 0
+    azmodan: 0
+    blaze: 0
+    brightwing: 0
+    cassia: 0
+    chen: 0
+    cho: 0
+    chromie: 0
+    dva: 0
+    deathwing: 0
+    deckard: 0
+    dehaka: 0
+    diablo: 0
+    etc: 0
+    falstad: 0
+    fenix: 0
+    gall: 0
+    garrosh: 0
+    gazlowe: 0
+    genji: 0
+    greymane: 0
+    guldan: 0
+    hanzo: 0
+    hogger: 0
+    illidan: 0
+    imperius: 0
+    jaina: 0
+    johanna: 0
+    junkrat: 0
+    kaelthas: 0
+    kelthuzad: 0
+    kerrigan: 0
+    kharazim: 0
+    leoric: 0
+    lili: 0
+    liming: 0
+    ltmorales: 0
+    lucio: 0
+    lunara: 0
+    maiev: 0
+    malganis: 0
+    malfurion: 0
+    malthael: 0
+    medivh: 0
+    mei: 0
+    mephisto: 0
+    muradin: 0
+    murky: 0
+    nazeebo: 0
+    nova: 0
+    orphea: 0
+    probius: 0
+    qhira: 0
+    ragnaros: 0
+    raynor: 0
+    rehgar: 0
+    rexxar: 0
+    samuro: 0
+    sgthammer: 0
+    sonya: 0
+    stitches: 0
+    stukov: 0
+    sylvanas: 0
+    tassadar: 0
+    thebutcher: 0
+    thelostvikings: 0
+    thrall: 0
+    tracer: 0
+    tychus: 0
+    tyrael: 0
+    tyrande: 0
+    uther: 0
+    valeera: 0
+    valla: 0
+    varian: 0
+    whitemane: 0
+    xul: 0
+    yrel: 0
+    zagara: 0
+    zarya: 0
+    zeratul: 0
+    zuljin: 0
+
+  #################
+  # Unlock System #
+  #################
+  role_passes:
+    # When on, each hero needs its unlock item and a role pass; when off, only the unlock item.
+    'false': 0
+    'true': 50
+
+  ###########################
+  # Item & Location Options #
+  ###########################
+  local_items:
+    # Forces these items to be in their native world.
+    []
+
+  non_local_items:
+    # Forces these items to be outside their native world.
+    []
+
+  start_inventory:
+    # Start with the specified amount of these items. Example: "Bomb: 1"
+    {}
+
+  start_hints:
+    # Start with these item's locations prefilled into the ``!hint`` command.
+    []
+
+  start_location_hints:
+    # Start with these locations and their item prefilled into the ``!hint`` command.
+    []
+
+  exclude_locations:
+    # Prevent these locations from having an important item.
+    []
+
+  priority_locations:
+    # Prevent these locations from having an unimportant item.
+    []
+
+  item_links:
+    # Share part of your item pool with other players.
+    []
+
+  plando_items:
+    # Generic items plando.
+    []
