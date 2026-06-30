@@ -307,9 +307,7 @@ Heroes of the Storm:
 
   extra_starting_heroes:
     # Random extra heroes unlocked at start with the starting hero. All extras share one role
-    # pass when Role Passes is on. Up to 4 extras (5 starting heroes total). If the pool
-    # cannot support the requested count, the best-fitting pass is used and the count is
-    # reduced automatically (no generation error).
+    # pass when Role Passes is on. Up to 4 extras (5 starting heroes total).
     #
     # You can define additional values between the minimum and maximum values.
     # Minimum value is 0
