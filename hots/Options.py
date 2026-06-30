@@ -100,6 +100,17 @@ class RolePasses(DefaultOnToggle):
     display_name = "Role Passes"
 
 
+class ExtraStartingHeroes(Range):
+    """
+    Random extra heroes unlocked at start with the starting hero. All extras share one role
+    pass when Role Passes is on. Up to 4 extras (5 starting heroes total).
+    """
+    display_name = "Extra Starting Heroes"
+    range_start = 0
+    range_end = 4
+    default = 0
+
+
 class HeroPoolSize(Range):
     """
     Randomly include this many heroes from those set to 1 in Enabled Heroes.
@@ -115,7 +126,7 @@ class RemoveHardestChecks(DefaultOnToggle):
     """
     When off, every role keeps all checks. When on, each role drops its hardest checks:
     highest takedown count, highest hero/heal/siege/damage tier, 8 assists (healers),
-    3 solo kills (melee assassins), level 20, and 12k XP.
+    3 solo kills (melee assassins), and level 20.
     """
     display_name = "Remove Hardest Checks"
     default = 0
@@ -130,10 +141,11 @@ class HoTSOptions(PerGameCommonOptions):
     goal_hero_count:  GoalHeroCount
     goal_hero:        GoalHero
     role_passes:      RolePasses
+    extra_starting_heroes: ExtraStartingHeroes
 
 
 hots_option_groups = [
     OptionGroup("Heroes", [EnabledHeroes, HeroPoolSize, RemoveHardestChecks]),
     OptionGroup("Victory", [GoalMode, GoalHeroCount, GoalHero]),
-    OptionGroup("Unlock System", [RolePasses]),
+    OptionGroup("Unlock System", [RolePasses, ExtraStartingHeroes]),
 ]

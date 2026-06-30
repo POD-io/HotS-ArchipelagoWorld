@@ -3,7 +3,7 @@ from Options import OptionError
 from worlds.AutoWorld import World, WebWorld
 from BaseClasses import Region, Item, ItemClassification
 from .Challenges import (
-    ALL_HEROES, HERO_CHECKS, WIN, active_role_checks, get_pass_key, get_role,
+    ALL_HEROES, HERO_CHECKS, WIN, checks_for_hero, get_pass_key, get_role,
     location_name, CHECK_DESCRIPTIONS, pass_key_from_item_name, pass_name_for_key,
 )
 from .Items import item_table, FILLER_ITEM_NAME, hero_unlock_items, role_pass_items
@@ -56,6 +56,9 @@ class HoTSWorld(World):
 
     hero_rank: dict[str, int]
     hero_checks: dict[str, list[str]]
+    starting_heroes: list[str]
+
+    MAX_STARTING_HEROES = 5
 
     def generate_early(self) -> None:
         hero_pool = self.options.enabled_heroes.enabled_display_names()
@@ -105,7 +108,7 @@ class HoTSWorld(World):
 
         remove_hardest = bool(self.options.remove_hardest_checks.value)
         self.hero_checks = {
-            hero: active_role_checks(get_role(hero), remove_hardest)
+            hero: checks_for_hero(hero, remove_hardest)
             for hero in self.enabled_heroes
         }
 
@@ -130,7 +133,11 @@ class HoTSWorld(World):
 
         self.goal_mode = goal_mode
         self.use_role_passes = bool(self.options.role_passes.value)
+        self._pick_starting_heroes()
+        self._build_hero_ranks()
+        self.goal_location_names = self._goal_location_names()
 
+    def _pick_starting_heroes(self) -> None:
         inv = {k: v for k, v in self.options.start_inventory.value.items() if v > 0}
         hero_inv = next((k for k in inv if k in ALL_HEROES), None)
         pass_inv = next(
@@ -138,31 +145,71 @@ class HoTSWorld(World):
             None,
         )
 
-        pass_keys_needed = sorted({get_pass_key(h) for h in self.enabled_heroes})
-        if self.use_role_passes and pass_keys_needed:
-            self.starting_role_pass = pass_inv or (
-                get_pass_key(hero_inv) if hero_inv else self.random.choice(pass_keys_needed)
-            )
-            if hero_inv:
-                self.starting_hero = hero_inv
-            else:
-                playable = [
-                    h for h in self.enabled_heroes
-                    if get_pass_key(h) == self.starting_role_pass
-                ]
-                self.starting_hero = self.random.choice(playable)
-        else:
-            self.starting_role_pass = None
-            self.starting_hero = hero_inv or self.random.choice(self.enabled_heroes)
+        extra_wanted = min(
+            self.options.extra_starting_heroes.value,
+            self.MAX_STARTING_HEROES - 1,
+        )
+        requested_total = min(
+            1 + extra_wanted,
+            self.MAX_STARTING_HEROES,
+            len(self.enabled_heroes),
+        )
 
-        self._build_hero_ranks()
-        self.goal_location_names = self._goal_location_names()
+        if not self.use_role_passes:
+            pool = list(self.enabled_heroes)
+            actual_total = min(requested_total, len(pool))
+            if hero_inv and hero_inv in pool:
+                starters = [hero_inv]
+                others = [hero for hero in pool if hero != hero_inv]
+                if actual_total > 1:
+                    starters.extend(self.random.sample(others, actual_total - 1))
+            else:
+                starters = self.random.sample(pool, actual_total)
+            self.starting_role_pass = None
+            self.starting_heroes = starters
+            self.starting_hero = hero_inv if hero_inv in starters else starters[0]
+            return
+
+        by_pass: dict[str, list[str]] = {}
+        for hero in self.enabled_heroes:
+            by_pass.setdefault(get_pass_key(hero), []).append(hero)
+
+        if hero_inv and hero_inv in self.enabled_heroes:
+            pass_key = get_pass_key(hero_inv)
+        elif pass_inv and pass_inv in by_pass:
+            pass_key = pass_inv
+        else:
+            viable = [key for key, heroes in by_pass.items() if len(heroes) >= requested_total]
+            if viable:
+                pass_key = self.random.choice(viable)
+            else:
+                best_count = max(len(heroes) for heroes in by_pass.values())
+                pass_key = self.random.choice(
+                    [key for key, heroes in by_pass.items() if len(heroes) == best_count]
+                )
+
+        pool = by_pass[pass_key]
+        actual_total = min(requested_total, len(pool))
+
+        if hero_inv and hero_inv in pool:
+            starters = [hero_inv]
+            others = [hero for hero in pool if hero != hero_inv]
+            if actual_total > 1:
+                starters.extend(self.random.sample(others, actual_total - 1))
+        else:
+            starters = self.random.sample(pool, actual_total)
+
+        self.starting_role_pass = pass_key
+        self.starting_heroes = starters
+        self.starting_hero = hero_inv if hero_inv in starters else starters[0]
 
     def _build_hero_ranks(self) -> None:
         """Random shuffle used only to forbid unlock cycles in item rules — not a fixed unlock chain."""
-        other_heroes = [hero for hero in self.enabled_heroes if hero != self.starting_hero]
+        starters = list(self.starting_heroes)
+        self.random.shuffle(starters)
+        other_heroes = [hero for hero in self.enabled_heroes if hero not in self.starting_heroes]
         self.random.shuffle(other_heroes)
-        hero_order = [self.starting_hero, *other_heroes]
+        hero_order = [*starters, *other_heroes]
         self.hero_rank = {hero: index for index, hero in enumerate(hero_order)}
 
     def _goal_location_names(self) -> list[str]:
@@ -219,9 +266,10 @@ class HoTSWorld(World):
         """One unlock item per locked hero and one pass per missing role — AP fill randomizes placement."""
         total_locations = sum(len(self.hero_checks[h]) for h in self.enabled_heroes)
         item_pool: list[Item] = []
+        starting = set(self.starting_heroes)
 
         for hero in self.enabled_heroes:
-            if hero != self.starting_hero:
+            if hero not in starting:
                 item_pool.append(self.create_item(hero))
 
         if self.use_role_passes:
@@ -245,8 +293,9 @@ class HoTSWorld(World):
 
     def generate_basic(self) -> None:
         start_inv = self.options.start_inventory.value
-        if start_inv.get(self.starting_hero, 0) <= 0:
-            self.multiworld.push_precollected(self.create_item(self.starting_hero))
+        for hero in self.starting_heroes:
+            if start_inv.get(hero, 0) <= 0:
+                self.multiworld.push_precollected(self.create_item(hero))
         if self.use_role_passes and self.starting_role_pass:
             pass_name = pass_name_for_key(self.starting_role_pass)
             if start_inv.get(pass_name, 0) <= 0:
@@ -274,6 +323,7 @@ class HoTSWorld(World):
             "goal_summary": goal_summary,
             "role_passes": self.use_role_passes,
             "starting_hero": self.starting_hero,
+            "starting_heroes": self.starting_heroes,
             "starting_role_pass": self.starting_role_pass,
             "locations": self.location_name_to_id,
             "items": self.item_name_to_id,
@@ -293,6 +343,10 @@ class HoTSWorld(World):
         spoiler_handle.write(f"Selected Heroes:                 {', '.join(self.enabled_heroes)}\n")
         if bool(self.options.remove_hardest_checks.value):
             spoiler_handle.write("Remove Hardest Checks:           yes\n")
+        if len(self.starting_heroes) > 1:
+            spoiler_handle.write(
+                f"Starting Heroes:                 {', '.join(self.starting_heroes)}\n"
+            )
         spoiler_handle.write(f"Goal Summary:                    {self._goal_summary_text()}\n")
         spoiler_handle.write(f"Goal Heroes:                     {', '.join(self.goal_heroes)}\n")
         if self.use_role_passes:

@@ -62,7 +62,7 @@ class HoTSClientCommandProcessor(ClientCommandProcessor):
             if detected and detected != self.ctx.battle_tag:
                 self.output(f"Latest replay shows: {detected}")
             self.output("Set with: /name YourBattleTag")
-            self.output("Names with spaces work — type the full tag after /name.")
+            self.output("Names with spaces work, type the full tag after /name.")
             return True
         new_tag = " ".join(parts).strip()
         if not new_tag:
@@ -201,6 +201,7 @@ class HoTSClient(CommonContext):
         self.use_role_passes: bool = True
         self.starting_role_pass: str | None = None
         self.starting_hero: str | None = None
+        self.starting_heroes: list[str] = []
         self.enabled_heroes: list[str] = []
         self.hero_checks: dict[str, list[str]] = {}
         self.goal_location_ids: set[int] = set()
@@ -232,35 +233,45 @@ class HoTSClient(CommonContext):
         self.use_role_passes = bool(sd.get("role_passes", True))
         self.starting_role_pass = sd.get("starting_role_pass")
         self.starting_hero = sd.get("starting_hero")
+        raw_starting_heroes = sd.get("starting_heroes")
+        if raw_starting_heroes:
+            self.starting_heroes = list(raw_starting_heroes)
+        elif self.starting_hero:
+            self.starting_heroes = [self.starting_hero]
+        else:
+            self.starting_heroes = []
         self.enabled_heroes = sd.get("enabled_heroes", sd.get("available_heroes", []))
         self.hero_checks = sd.get("hero_checks", {})
         self.goal_location_ids = set(sd.get("goal_location_ids", []))
         self.checked_locations.update(args.get("checked_locations", []))
         self.unlocked_heroes.clear()
         self.unlocked_roles.clear()
-        if self.starting_hero:
-            self.unlocked_heroes.add(self.starting_hero)
+        for hero in self.starting_heroes:
+            self.unlocked_heroes.add(hero)
         if self.use_role_passes and self.starting_role_pass:
             self.unlocked_roles.add(self.starting_role_pass)
         self.tracker = HoTSTracker(self)
         self._connected = True
         goal_summary = sd.get("goal_summary", "")
-        if self.starting_hero:
-            logger.info(f"[HotS] Starting hero: {self.starting_hero}")
+        if self.starting_heroes:
+            if len(self.starting_heroes) == 1:
+                logger.info(f"[HotS] Starting hero: {self.starting_heroes[0]}")
+            else:
+                logger.info(f"[HotS] Starting heroes: {', '.join(self.starting_heroes)}")
         else:
             logger.info("[HotS] Starting hero: (none)")
         logger.info(f"[HotS] Goal: {goal_summary}")
         if self.battle_tag:
             logger.info(f"[HotS] HotS player: {self.battle_tag}")
         else:
-            logger.info("[HotS] HotS player: (unknown — play a match or use /name YourBattleTag)")
+            logger.info("[HotS] HotS player: (unknown - play a match or use /name YourBattleTag)")
         if self.replay_dirs:
             logger.info(
-                f"[HotS] Replay watcher active — {len(self.replay_dirs)} folder(s), "
+                f"[HotS] Replay watcher active - {len(self.replay_dirs)} folder(s), "
                 f"poll every {POLL_INTERVAL}s"
             )
         else:
-            logger.warning("[HotS] No replay folders configured — checks will not be detected.")
+            logger.warning("[HotS] No replay folders configured - checks will not be detected.")
         if self.tracker:
             self.tracker.refresh()
         asyncio.create_task(self._check_goal())
@@ -327,12 +338,12 @@ class HoTSClient(CommonContext):
         logger.info(f"[HotS] Processing replay: {filename}")
         toon = _toon_handle_from_replay_path(path)
         if not toon:
-            logger.warning(f"[HotS] Replay skipped — not in a recognized account folder: {filename}")
+            logger.warning(f"[HotS] Replay skipped, not in a recognized account folder: {filename}")
             return
         result = parse_replay(path, toon_handle=toon)
         if result is None:
             logger.warning(
-                f"[HotS] Replay skipped — could not parse {filename}. "
+                f"[HotS] Replay skipped, could not parse {filename}. "
                 "Try restarting the client after updating hots.apworld."
             )
             return
@@ -349,14 +360,14 @@ class HoTSClient(CommonContext):
                 )
         hero = hero_from_replay_name(result.hero)
         if hero is None:
-            logger.info(f"[HotS] Replay skipped — unknown hero {result.hero!r} in {filename}")
+            logger.info(f"[HotS] Replay skipped, unknown hero {result.hero!r} in {filename}")
             return
         if hero not in self.enabled_heroes:
-            logger.info(f"[HotS] Replay skipped — {hero} is not in your enabled hero pool")
+            logger.info(f"[HotS] Replay skipped, {hero} is not in your enabled hero pool")
             return
         if not self._hero_unlocked(hero):
             logger.info(
-                f"[HotS] Replay skipped — {hero} is locked "
+                f"[HotS] Replay skipped, {hero} is locked "
                 f"(match result: {result.result}, map: {result.map_name})"
             )
             return
@@ -393,7 +404,7 @@ class HoTSClient(CommonContext):
             return
         if self.goal_location_ids.issubset(self.checked_locations):
             await self.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
-            logger.info("[HotS] GOAL complete — goal sent to server.")
+            logger.info("[HotS] GOAL complete, goal sent to server.")
     async def _scan_replays(self):
         current = _scan_replay_mtimes(self.replay_dirs)
         now = time.time()
@@ -424,7 +435,7 @@ class HoTSClient(CommonContext):
                 except Exception as exc:
                     logger.warning(f"[HotS] Replay scan error: {exc}")
             await asyncio.sleep(POLL_INTERVAL)
-    async def _setup(self):
+    def _load_replay_dirs(self) -> None:
         self.cfg = _load_config()
         self.cfg.pop("toon_handle", None)
         dirs_from_cfg = [d for d in self.cfg.get("replay_dirs", []) if os.path.isdir(d)]
@@ -434,29 +445,49 @@ class HoTSClient(CommonContext):
             self.replay_dirs = _find_multiplayer_dirs(ACCOUNTS_ROOT)
             if self.replay_dirs:
                 self.cfg["replay_dirs"] = self.replay_dirs
-        _save_config(self.cfg)
-        if not self.replay_dirs:
-            await self._prompt_missing()
-        await self._resolve_battle_tag()
-        self.known_replays = _scan_replay_mtimes(self.replay_dirs)
-        logger.info(
-            f"[HotS] Ignoring {len(self.known_replays)} existing replays "
-            f"(use /rescan to reprocess your latest match)."
-        )
+        if self.replay_dirs:
+            _save_config(self.cfg)
+
+    async def _setup(self):
+        self._load_replay_dirs()
+        if self.replay_dirs:
+            await self._resolve_battle_tag()
+            self.known_replays = _scan_replay_mtimes(self.replay_dirs)
+            logger.info(
+                f"[HotS] Ignoring {len(self.known_replays)} existing replays "
+                f"(use /rescan to reprocess your latest match)."
+            )
+
     async def _prompt_missing(self):
         msg = f"No replay folders found under: {ACCOUNTS_ROOT}"
         if gui_enabled:
+            while not self.ui:
+                await asyncio.sleep(0.05)
             logger.warning(f"[HotS] {msg}")
+            logger.info(
+                "Paste your Multiplayer replay folder path in the console "
+                "input below and press Enter (or Enter alone to skip)."
+            )
             custom = (await self.console_input()).strip()
         else:
-            print(f"\n=== Heroes of the Storm — First Run Setup ===\n{msg}")
+            print(f"\n=== Heroes of the Storm - First Run Setup ===\n{msg}")
             custom = input("Enter your replay folder path (or Enter to skip): ").strip()
         if custom and os.path.isdir(custom):
             self.replay_dirs = [custom]
             self.cfg["replay_dirs"] = self.replay_dirs
             _save_config(self.cfg)
+            await self._resolve_battle_tag()
+            self.known_replays = _scan_replay_mtimes(self.replay_dirs)
+            logger.info(
+                f"Replay folder configured, ignoring {len(self.known_replays)} "
+                f"existing replays (use /rescan to reprocess your latest match)."
+            )
         elif not self.replay_dirs:
-            logger.warning("[HotS] No replay folder — checks will not be detected until one is configured.")
+            logger.warning(
+                "No replay folder - checks will not be detected until one is configured. "
+                f"Edit {CONFIG_FILE} or paste a path in the console when prompted."
+            )
+            _save_config(self.cfg)
 
     def run_gui(self):
         from kvui import GameManager, UILog
@@ -486,6 +517,8 @@ def launch(*launch_args):
         if gui_enabled:
             ctx.run_gui()
         ctx.run_cli()
+        if not ctx.replay_dirs:
+            asyncio.create_task(ctx._prompt_missing(), name="ReplayFolderSetup")
         await ctx.exit_event.wait()
         ctx.server_address = None
         await ctx.shutdown()

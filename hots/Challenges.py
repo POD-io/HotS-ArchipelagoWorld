@@ -2,8 +2,6 @@ import unicodedata
 
 WIN = "win"
 
-XP_8K = "xp_8k"
-XP_12K = "xp_12k"
 LEVEL_20 = "level_20"
 
 TAKEDOWNS_1 = "takedowns_1"
@@ -29,12 +27,10 @@ MINION_50 = "minion_50"
 ASSISTS_8 = "assists_8"
 MERC_2 = "merc_2"
 
-COMMON_CHECKS = [WIN, XP_8K, XP_12K, LEVEL_20]
+COMMON_CHECKS = [WIN, LEVEL_20]
 
 CHECK_DESCRIPTIONS: dict[str, str] = {
     WIN:                 "Win a match",
-    XP_8K:               "Collect 8,000 experience",
-    XP_12K:              "Collect 12,000 experience",
     LEVEL_20:            "Reach level 20",
     TAKEDOWNS_1:         "Get 1 takedown",
     TAKEDOWNS_5:         "Get 5 takedowns",
@@ -109,13 +105,13 @@ HERO_ROLES: dict[str, str] = {
     "Brightwing": "healer", "Deckard": "healer", "Kharazim": "healer", "Li Li": "healer",
     "Lt. Morales": "healer", "Lúcio": "healer", "Malfurion": "healer", "Rehgar": "healer",
     "Stukov": "healer", "Tyrande": "healer", "Uther": "healer", "Whitemane": "healer",
-    # Support
-    "Abathur": "support", "Medivh": "support", "Tassadar": "support",
+    # Support (macro / siege bucket — not healer; no healing checks)
+    "Abathur": "support", "Gazlowe": "support", "Medivh": "support", "Murky": "support",
     "The Lost Vikings": "support", "Zarya": "support",
     # Melee Assassin
-    "Alarak": "melee_assassin", "Gazlowe": "melee_assassin", "Hogger": "melee_assassin",
+    "Alarak": "melee_assassin", "Hogger": "melee_assassin",
     "Illidan": "melee_assassin", "Kerrigan": "melee_assassin", "Maiev": "melee_assassin",
-    "Murky": "melee_assassin", "Qhira": "melee_assassin", "Samuro": "melee_assassin",
+    "Qhira": "melee_assassin", "Samuro": "melee_assassin",
     "The Butcher": "melee_assassin", "Valeera": "melee_assassin", "Zeratul": "melee_assassin",
     # Ranged Assassin
     "Azmodan": "ranged_assassin", "Cassia": "ranged_assassin", "Chromie": "ranged_assassin",
@@ -126,6 +122,7 @@ HERO_ROLES: dict[str, str] = {
     "Lunara": "ranged_assassin", "Mephisto": "ranged_assassin", "Nazeebo": "ranged_assassin",
     "Nova": "ranged_assassin", "Orphea": "ranged_assassin", "Probius": "ranged_assassin",
     "Raynor": "ranged_assassin", "Sgt. Hammer": "ranged_assassin", "Sylvanas": "ranged_assassin",
+    "Tassadar": "ranged_assassin",
     "Tracer": "ranged_assassin", "Tychus": "ranged_assassin", "Valla": "ranged_assassin",
     "Zagara": "ranged_assassin", "Zul'jin": "ranged_assassin",
 }
@@ -155,7 +152,7 @@ ROLE_DISPLAY: dict[str, str] = {
     "tank": "Tank",
     "bruiser": "Bruiser",
     "healer": "Healer",
-    "support": "Support",
+    "support": "Specialist",  # macro/siege bucket; healing checks live on healer only
     "melee_assassin": "Melee Assassin",
     "ranged_assassin": "Ranged Assassin",
 }
@@ -228,18 +225,13 @@ def role_display(role: str) -> str:
     return ROLE_DISPLAY.get(role, role.replace("_", " ").title())
 
 
-HERO_CHECKS: dict[str, list[str]] = {
-    hero: list(ROLE_CHECKS[get_role(hero)])
-    for hero in ALL_HEROES
-}
-
 EASY_MODE_REMOVED: dict[str, frozenset[str]] = {
-    "tank": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_25K}),
-    "bruiser": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_50K}),
-    "healer": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_10, HEALING_60K, ASSISTS_8}),
-    "support": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_10, SIEGE_50K}),
-    "melee_assassin": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_50K, SOLO_KILL_3}),
-    "ranged_assassin": frozenset({XP_12K, LEVEL_20, TAKEDOWNS_15, HERO_50K, SIEGE_75K}),
+    "tank": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_25K}),
+    "bruiser": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_50K}),
+    "healer": frozenset({LEVEL_20, TAKEDOWNS_10, HEALING_60K, ASSISTS_8}),
+    "support": frozenset({LEVEL_20, TAKEDOWNS_10, SIEGE_50K}),
+    "melee_assassin": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_50K, SOLO_KILL_3}),
+    "ranged_assassin": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_50K, SIEGE_75K}),
 }
 
 
@@ -249,6 +241,28 @@ def active_role_checks(role: str, remove_hardest: bool = False) -> list[str]:
         return list(checks)
     removed = EASY_MODE_REMOVED[role]
     return [check for check in checks if check not in removed]
+
+
+# Per-hero check lists when a role bucket is a poor fit.
+HERO_CHECK_OVERRIDES: dict[str, list[str]] = {}
+
+
+def _base_checks_for_hero(hero: str) -> list[str]:
+    if hero in HERO_CHECK_OVERRIDES:
+        return list(HERO_CHECK_OVERRIDES[hero])
+    return list(ROLE_CHECKS[get_role(hero)])
+
+
+def checks_for_hero(hero: str, remove_hardest: bool = False) -> list[str]:
+    if hero in HERO_CHECK_OVERRIDES:
+        return list(HERO_CHECK_OVERRIDES[hero])
+    return active_role_checks(get_role(hero), remove_hardest)
+
+
+HERO_CHECKS: dict[str, list[str]] = {
+    hero: _base_checks_for_hero(hero)
+    for hero in ALL_HEROES
+}
 
 
 def _normalize_hero_name(name: str) -> str:
@@ -279,12 +293,6 @@ def detect_checks(score: dict, result: str, level_history: list | None = None) -
     max_level = max(level_history or [0], default=0)
     if max_level >= 20:
         fired.add(LEVEL_20)
-
-    xp = score.get("ExperienceContribution", 0)
-    if xp >= 8_000:
-        fired.add(XP_8K)
-    if xp >= 12_000:
-        fired.add(XP_12K)
 
     takedowns = score.get("Takedowns", 0)
     if takedowns >= 1:

@@ -60,8 +60,11 @@ class HoTSTracker:
     def print_status(self, output) -> None:
         sd = getattr(self.ctx, "slot_data", {}) or {}
         output("Heroes of the Storm — Status")
-        if self.ctx.starting_hero:
-            output(f"Starting hero: {self.ctx.starting_hero}")
+        if self.ctx.starting_heroes:
+            if len(self.ctx.starting_heroes) == 1:
+                output(f"Starting hero: {self.ctx.starting_heroes[0]}")
+            else:
+                output(f"Starting heroes: {', '.join(self.ctx.starting_heroes)}")
         output(f"Goal: {sd.get('goal_summary', '?')}")
         output(f"Unlocked heroes: {', '.join(self.unlocked_heroes()) or '(none)'}")
         output(f"Open checks: {len(self.accessible_missing())}")
@@ -162,8 +165,11 @@ class HoTSTracker:
         if not tab:
             return
         rows: list[dict] = []
-        if self.ctx.starting_hero:
-            rows.append({"text": f"Starting hero: {self.ctx.starting_hero}"})
+        if self.ctx.starting_heroes:
+            if len(self.ctx.starting_heroes) == 1:
+                rows.append({"text": f"Starting hero: {self.ctx.starting_heroes[0]}"})
+            else:
+                rows.append({"text": f"Starting heroes: {', '.join(self.ctx.starting_heroes)}"})
             rows.append({"text": ""})
 
         if self.ctx.use_role_passes:

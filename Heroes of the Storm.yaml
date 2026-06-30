@@ -34,7 +34,7 @@ game: Heroes of the Storm
 requires:
   version: 0.6.7 # Version of Archipelago required for this yaml to work as expected.
   game:
-    Heroes of the Storm: 0.2.0 # Version of the world required for this yaml to work as expected.
+    Heroes of the Storm: 0.2.1 # Version of the world required for this yaml to work as expected.
 
 Heroes of the Storm:
   ################
@@ -177,7 +177,7 @@ Heroes of the Storm:
   remove_hardest_checks:
     # When off, every role keeps all checks. When on, each role drops its hardest checks:
     # highest takedown count, highest hero/heal/siege/damage tier, 8 assists (healers),
-    # 3 solo kills (melee assassins), level 20, and 12k XP.
+    # 3 solo kills (melee assassins), and level 20.
     'false': 50
     'true': 0
 
@@ -304,6 +304,21 @@ Heroes of the Storm:
     # When on, each hero needs its unlock item and a role pass (Tank, Bruiser, Support, Melee Assassin, or Ranged Assassin). Healers and utility supports use Support Pass.
     'false': 0
     'true': 50
+
+  extra_starting_heroes:
+    # Random extra heroes unlocked at start with the starting hero. All extras share one role
+    # pass when Role Passes is on. Up to 4 extras (5 starting heroes total). If the pool
+    # cannot support the requested count, the best-fitting pass is used and the count is
+    # reduced automatically (no generation error).
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 4
+    0: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-4: 0 # random value between 0 and 4
 
   ###########################
   # Item & Location Options #
