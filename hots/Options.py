@@ -71,11 +71,25 @@ class GoalHero(TextChoice):
     """Hero to complete when Goal is specific_hero."""
     display_name = "Goal Hero"
     default = "Alarak"
+    supports_weighting = False
 
     vars().update({
         f"option_{yaml_key}": yaml_key
         for yaml_key in sorted(YAML_KEY_TO_HERO.keys())
     })
+
+    @classmethod
+    def from_any(cls, data):
+        if isinstance(data, dict):
+            normalized = {normalize_hero_yaml_key(str(k)): v for k, v in data.items()}
+            if not any(normalized.values()):
+                return cls(cls.default)
+            key = random.choices(
+                list(normalized.keys()),
+                weights=[int(v) for v in normalized.values()],
+            )[0]
+            return cls.from_text(key)
+        return super().from_any(data)
 
     @classmethod
     def from_text(cls, text: str):
@@ -89,6 +103,9 @@ class GoalHero(TextChoice):
 
     def verify(self, world, player_name, plando_options):
         super().verify(world, player_name, plando_options)
+        goal = getattr(plando_options, "goal", None)
+        if goal is not None and goal.current_key != "specific_hero":
+            return
         hero = resolve_goal_hero_name(self)
         if hero not in ALL_HEROES:
             raise OptionError(f"{player_name}: Unknown goal hero: {hero!r}")
@@ -115,6 +132,7 @@ class HeroPoolSize(Range):
     """
     Randomly include this many heroes from those set to 1 in Enabled Heroes.
     When Goal is specific_hero, the goal hero is always kept in the pool.
+    Set to 0 to include all your enabled_heroes.
     """
     display_name = "Hero Pool Size"
     range_start = 0
@@ -132,6 +150,15 @@ class RemoveHardestChecks(DefaultOnToggle):
     default = 0
 
 
+class IncludeTimedWinCheck(DefaultOnToggle):
+    """
+    When Role Passes is on, add one timed win check per role pass bucket (win in under 18 minutes).
+    Any currently unlocked hero in that pass can achieve the check.
+    """
+    display_name = "Include Timed Win Check"
+    default = 0
+
+
 @dataclass
 class HoTSOptions(PerGameCommonOptions):
     enabled_heroes: EnabledHeroes
@@ -142,10 +169,11 @@ class HoTSOptions(PerGameCommonOptions):
     goal_hero:        GoalHero
     role_passes:      RolePasses
     extra_starting_heroes: ExtraStartingHeroes
+    include_timed_win_check: IncludeTimedWinCheck
 
 
 hots_option_groups = [
     OptionGroup("Heroes", [EnabledHeroes, HeroPoolSize, RemoveHardestChecks]),
     OptionGroup("Victory", [GoalMode, GoalHeroCount, GoalHero]),
-    OptionGroup("Unlock System", [RolePasses, ExtraStartingHeroes]),
+    OptionGroup("Unlock System", [RolePasses, ExtraStartingHeroes, IncludeTimedWinCheck]),
 ]

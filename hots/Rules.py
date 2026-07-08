@@ -1,6 +1,9 @@
 from BaseClasses import MultiWorld
 from worlds.generic.Rules import add_item_rule
-from .Challenges import ALL_HEROES, get_pass_key, pass_key_from_item_name, pass_name_for_key, location_name
+from .Challenges import (
+    ALL_HEROES, get_pass_key, pass_key_from_item_name, pass_name_for_key, location_name,
+    pass_location_name,
+)
 
 
 def set_rules(
@@ -10,6 +13,8 @@ def set_rules(
     use_role_passes: bool,
     hero_rank: dict[str, int],
     hero_checks: dict[str, list[str]],
+    enabled_pass_keys: list[str] | None = None,
+    pass_check_keys: list[str] | None = None,
 ) -> None:
     for hero in enabled_heroes:
         unlock_item = hero
@@ -56,3 +61,36 @@ def set_rules(
                     return get_pass_key(host) != item_pass_key
 
                 add_item_rule(loc, pass_item_rule)
+
+    if use_role_passes and enabled_pass_keys and pass_check_keys:
+        set_pass_rules(multiworld, player, enabled_pass_keys, pass_check_keys)
+
+
+def set_pass_rules(
+    multiworld: MultiWorld,
+    player: int,
+    enabled_pass_keys: list[str],
+    pass_check_keys: list[str],
+) -> None:
+    for pass_key in enabled_pass_keys:
+        pass_item = pass_name_for_key(pass_key)
+        for check_key in pass_check_keys:
+            loc_name = pass_location_name(pass_key, check_key)
+            try:
+                loc = multiworld.get_location(loc_name, player)
+            except KeyError:
+                continue
+
+            loc.access_rule = lambda state, needed=pass_item, pid=player: state.has(needed, pid)
+
+            host_pass = pass_key
+
+            def pass_item_rule(item, host=host_pass) -> bool:
+                if not item.name.endswith(" Pass"):
+                    return True
+                item_pass_key = pass_key_from_item_name(item.name)
+                if item_pass_key is None:
+                    return True
+                return item_pass_key != host
+
+            add_item_rule(loc, pass_item_rule)

@@ -5,9 +5,12 @@ from BaseClasses import Region, Item, ItemClassification
 from .Challenges import (
     ALL_HEROES, HERO_CHECKS, WIN, checks_for_hero, get_pass_key, get_role,
     location_name, CHECK_DESCRIPTIONS, pass_key_from_item_name, pass_name_for_key,
+    pass_location_name, pass_check_keys_for_seed, pass_location_names_for_seed,
+    PASS_KEYS, PASS_XP_CHECKS, PASS_TIMED_WIN_CHECKS,
+    PASS_XP_THRESHOLDS, TIMED_WIN_MAX_SECONDS,
 )
 from .Items import item_table, FILLER_ITEM_NAME, hero_unlock_items, role_pass_items
-from .Locations import location_table, HoTSLocation, locations_by_hero
+from .Locations import location_table, HoTSLocation, locations_by_hero, locations_by_pass
 from .Options import HoTSOptions, hots_option_groups, resolve_goal_hero_name
 from .Rules import set_rules
 
@@ -32,9 +35,16 @@ class HoTSWebWorld(WebWorld):
     theme = "ice"
     option_groups = hots_option_groups
     location_descriptions = {
-        location_name(hero, check_key): CHECK_DESCRIPTIONS[check_key]
-        for hero, checks in HERO_CHECKS.items()
-        for check_key in checks
+        **{
+            location_name(hero, check_key): CHECK_DESCRIPTIONS[check_key]
+            for hero, checks in HERO_CHECKS.items()
+            for check_key in checks
+        },
+        **{
+            pass_location_name(pass_key, check_key): CHECK_DESCRIPTIONS[check_key]
+            for pass_key in PASS_KEYS
+            for check_key in PASS_XP_CHECKS + PASS_TIMED_WIN_CHECKS
+        },
     }
 
 
@@ -133,13 +143,39 @@ class HoTSWorld(World):
 
         self.goal_mode = goal_mode
         self.use_role_passes = bool(self.options.role_passes.value)
+        self.include_timed_win_check = (
+            self.use_role_passes and bool(self.options.include_timed_win_check.value)
+        )
+        self.enabled_pass_keys = sorted({get_pass_key(h) for h in self.enabled_heroes})
+        self.pass_check_keys = pass_check_keys_for_seed(
+            self.use_role_passes, self.include_timed_win_check,
+        )
+        self.pass_location_names = pass_location_names_for_seed(
+            self.enabled_pass_keys, self.use_role_passes, self.include_timed_win_check,
+        )
         self._pick_starting_heroes()
         self._build_hero_ranks()
         self.goal_location_names = self._goal_location_names()
 
+    def _starters_excluded_heroes(self) -> set[str]:
+        """Keep goal heroes off the starting roster when the pool has other options."""
+        if len(self.enabled_heroes) <= 1:
+            return set()
+        if self.goal_mode in ("distinct_wins", "random_heroes"):
+            return set(self.goal_heroes)
+        return set()
+
+    def _eligible_starters(self, heroes: list[str]) -> list[str]:
+        excluded = self._starters_excluded_heroes()
+        eligible = [hero for hero in heroes if hero not in excluded]
+        return eligible if eligible else list(heroes)
+
     def _pick_starting_heroes(self) -> None:
         inv = {k: v for k, v in self.options.start_inventory.value.items() if v > 0}
         hero_inv = next((k for k in inv if k in ALL_HEROES), None)
+        excluded = self._starters_excluded_heroes()
+        if hero_inv in excluded:
+            hero_inv = None
         pass_inv = next(
             (key for k, v in inv.items() if v > 0 and (key := pass_key_from_item_name(k))),
             None,
@@ -156,7 +192,7 @@ class HoTSWorld(World):
         )
 
         if not self.use_role_passes:
-            pool = list(self.enabled_heroes)
+            pool = self._eligible_starters(list(self.enabled_heroes))
             actual_total = min(requested_total, len(pool))
             if hero_inv and hero_inv in pool:
                 starters = [hero_inv]
@@ -179,16 +215,24 @@ class HoTSWorld(World):
         elif pass_inv and pass_inv in by_pass:
             pass_key = pass_inv
         else:
-            viable = [key for key, heroes in by_pass.items() if len(heroes) >= requested_total]
+            viable = [
+                key for key, heroes in by_pass.items()
+                if len(self._eligible_starters(heroes)) >= requested_total
+            ]
             if viable:
                 pass_key = self.random.choice(viable)
             else:
-                best_count = max(len(heroes) for heroes in by_pass.values())
-                pass_key = self.random.choice(
-                    [key for key, heroes in by_pass.items() if len(heroes) == best_count]
-                )
+                fallback = [
+                    (key, self._eligible_starters(heroes))
+                    for key, heroes in by_pass.items()
+                    if self._eligible_starters(heroes)
+                ]
+                if not fallback:
+                    pass_key = self.random.choice(list(by_pass))
+                else:
+                    pass_key = max(fallback, key=lambda item: len(item[1]))[0]
 
-        pool = by_pass[pass_key]
+        pool = self._eligible_starters(by_pass[pass_key])
         actual_total = min(requested_total, len(pool))
 
         if hero_inv and hero_inv in pool:
@@ -235,6 +279,11 @@ class HoTSWorld(World):
                 loc = HoTSLocation(self.player, loc_name, data.id, nexus)
                 nexus.locations.append(loc)
 
+        for loc_name in self.pass_location_names:
+            data = location_table[loc_name]
+            loc = HoTSLocation(self.player, loc_name, data.id, nexus)
+            nexus.locations.append(loc)
+
         victory_loc = HoTSLocation(self.player, "Nexus Mastery", None, nexus)
         nexus.locations.append(victory_loc)
 
@@ -246,6 +295,8 @@ class HoTSWorld(World):
             self.use_role_passes,
             self.hero_rank,
             self.hero_checks,
+            self.enabled_pass_keys if self.use_role_passes else None,
+            self.pass_check_keys if self.use_role_passes else None,
         )
 
         goal_locs = tuple(self.goal_location_names)
@@ -265,6 +316,7 @@ class HoTSWorld(World):
     def create_items(self) -> None:
         """One unlock item per locked hero and one pass per missing role — AP fill randomizes placement."""
         total_locations = sum(len(self.hero_checks[h]) for h in self.enabled_heroes)
+        total_locations += len(self.pass_location_names)
         item_pool: list[Item] = []
         starting = set(self.starting_heroes)
 
@@ -325,6 +377,12 @@ class HoTSWorld(World):
             "starting_hero": self.starting_hero,
             "starting_heroes": self.starting_heroes,
             "starting_role_pass": self.starting_role_pass,
+            "enabled_pass_keys": self.enabled_pass_keys,
+            "pass_check_keys": self.pass_check_keys,
+            "pass_location_names": self.pass_location_names,
+            "pass_xp_thresholds": PASS_XP_THRESHOLDS,
+            "timed_win_max_seconds": TIMED_WIN_MAX_SECONDS,
+            "include_timed_win_check": self.include_timed_win_check,
             "locations": self.location_name_to_id,
             "items": self.item_name_to_id,
         }

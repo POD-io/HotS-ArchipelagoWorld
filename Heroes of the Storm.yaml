@@ -34,7 +34,7 @@ game: Heroes of the Storm
 requires:
   version: 0.6.7 # Version of Archipelago required for this yaml to work as expected.
   game:
-    Heroes of the Storm: 0.2.1 # Version of the world required for this yaml to work as expected.
+    Heroes of the Storm: 0.3.0 # Version of the world required for this yaml to work as expected.
 
 Heroes of the Storm:
   ################
@@ -164,6 +164,7 @@ Heroes of the Storm:
   hero_pool_size:
     # Randomly include this many heroes from those set to 1 in Enabled Heroes.
     # When Goal is specific_hero, the goal hero is always kept in the pool.
+    # Set to 0 to include all your enabled_heroes.
     #
     # You can define additional values between the minimum and maximum values.
     # Minimum value is 0
@@ -317,6 +318,12 @@ Heroes of the Storm:
     random-low: 0 # random value weighted towards lower values
     random-high: 0 # random value weighted towards higher values
     random-range-0-4: 0 # random value between 0 and 4
+
+  include_timed_win_check:
+    # When Role Passes is on, add one timed win check per role pass bucket (win in under 18 minutes).
+    # Any currently unlocked hero in that pass can achieve the check.
+    'false': 50
+    'true': 0
 
   ###########################
   # Item & Location Options #

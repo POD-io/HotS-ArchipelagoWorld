@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from .Challenges import get_pass_key, get_role, pass_name_for_key, role_display, PASS_KEYS, HERO_CHECKS
+from .Challenges import (
+    get_pass_key, get_role, pass_name_for_key, role_display, pass_contributor_hint,
+    HERO_CHECKS, XP_PASS_18K, XP_PASS_40K, PASS_XP_THRESHOLDS,
+    pass_location_name,
+)
 from .Locations import location_table
 
 
@@ -21,10 +25,17 @@ class HoTSTracker:
             return False
         return self.has_hero_unlock(hero) and self.has_role_pass(hero)
 
+    def has_pass_unlock(self, pass_key: str) -> bool:
+        if not self.ctx.use_role_passes:
+            return True
+        return pass_key in self.ctx.unlocked_roles
+
     def location_accessible(self, loc_name: str) -> bool:
         data = location_table.get(loc_name)
-        if not data or not data.hero:
+        if not data or not data.hero and not data.pass_key:
             return True
+        if data.pass_key:
+            return self.has_pass_unlock(data.pass_key)
         return self.hero_unlocked(data.hero)
 
     def is_checked(self, loc_name: str) -> bool:
@@ -47,6 +58,16 @@ class HoTSTracker:
         if hero in hero_checks:
             return len(hero_checks[hero])
         return len(HERO_CHECKS.get(hero, []))
+
+    def _pass_xp_progress(self, pass_key: str) -> tuple[int, int, bool, bool]:
+        thresholds = getattr(self.ctx, "pass_xp_thresholds", PASS_XP_THRESHOLDS)
+        total = getattr(self.ctx, "pass_xp_totals", {}).get(pass_key, 0)
+        tier1 = thresholds.get(XP_PASS_18K, 18_000)
+        tier2 = thresholds.get(XP_PASS_40K, 40_000)
+        tier1_done = self.is_checked(pass_location_name(pass_key, XP_PASS_18K))
+        tier2_done = self.is_checked(pass_location_name(pass_key, XP_PASS_40K))
+        goal = tier2 if not tier2_done else tier2
+        return total, goal, tier1_done, tier2_done
 
     def unlocked_heroes(self) -> list[str]:
         return sorted(h for h in self.ctx.enabled_heroes if self.hero_unlocked(h))
@@ -93,7 +114,6 @@ class HoTSTracker:
             {"text": ""},
         ]
         for hero in sd.get("goal_heroes", []):
-            role = get_role(hero)
             hero_ok = self.has_hero_unlock(hero)
             pass_ok = self.has_role_pass(hero)
             needs = self._unlock_needs(hero)
@@ -121,10 +141,56 @@ class HoTSTracker:
                 continue
             short = name.split(": ", 1)[-1]
             if self.is_checked(name):
-                rows.append(self._line(f"  [done] {short}", done=True))
+                rows.append(self._line(f"  {short}", done=True))
             else:
-                rows.append({"text": f"  [open] {short}"})
+                rows.append({"text": f"  {short}"})
         tab.content.data = rows
+
+    def _collect_open_checks(self) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+        by_pass: dict[str, list[str]] = {}
+        by_hero: dict[str, list[str]] = {h: [] for h in self.unlocked_heroes()}
+
+        for loc_id in getattr(self.ctx, "missing_locations", set()):
+            if loc_id in self.ctx.checked_locations:
+                continue
+            loc_name = self.ctx.location_names.lookup_in_game(loc_id, self.ctx.game)
+            if not loc_name or not self.location_accessible(loc_name):
+                continue
+            data = location_table.get(loc_name)
+            if data and data.pass_key:
+                by_pass.setdefault(data.pass_key, []).append(loc_name)
+                continue
+            hero = data.hero if data else None
+            if hero and hero in by_hero:
+                by_hero[hero].append(loc_name)
+
+        return by_pass, by_hero
+
+    def _pass_check_rows(self, pass_key: str, pass_check_keys: list[str]) -> list[dict]:
+        rows: list[dict] = []
+        has_xp = XP_PASS_18K in pass_check_keys
+
+        if has_xp:
+            total, goal, tier1_done, tier2_done = self._pass_xp_progress(pass_key)
+            if not (tier1_done and tier2_done):
+                rows.append({"text": f"  {total:,} / {goal:,} XP"})
+
+        for check_key in pass_check_keys:
+            loc_name = pass_location_name(pass_key, check_key)
+            short = loc_name.split(": ", 1)[-1]
+            if self.is_checked(loc_name):
+                rows.append(self._line(f"  {short}", done=True))
+            elif self.location_accessible(loc_name):
+                rows.append({"text": f"  {short}"})
+
+        return rows
+
+    def _pass_has_open_checks(self, pass_key: str, pass_check_keys: list[str]) -> bool:
+        for check_key in pass_check_keys:
+            loc_name = pass_location_name(pass_key, check_key)
+            if self.location_accessible(loc_name) and not self.is_checked(loc_name):
+                return True
+        return False
 
     def update_tracker_tab(self) -> None:
         tab = getattr(self.ctx, "tab_tracker", None)
@@ -135,18 +201,35 @@ class HoTSTracker:
             return
 
         rows: list[dict] = []
-        by_hero: dict[str, list[str]] = {h: [] for h in self.unlocked_heroes()}
+        sd = getattr(self.ctx, "slot_data", {}) or {}
+        pass_check_keys = sd.get("pass_check_keys", [])
+        enabled_pass_keys = sd.get("enabled_pass_keys", [])
 
-        for loc_id in getattr(self.ctx, "missing_locations", set()):
-            if loc_id in self.ctx.checked_locations:
-                continue
-            loc_name = self.ctx.location_names.lookup_in_game(loc_id, self.ctx.game)
-            if not loc_name or not self.location_accessible(loc_name):
-                continue
-            data = location_table.get(loc_name)
-            hero = data.hero if data else None
-            if hero and hero in by_hero:
-                by_hero[hero].append(loc_name)
+        if self.ctx.use_role_passes and enabled_pass_keys:
+            rows.append({"text": "Role passes in seed:"})
+            for pass_key in enabled_pass_keys:
+                label = pass_name_for_key(pass_key)
+                if self.has_pass_unlock(pass_key):
+                    rows.append(self._line(f"  {label}", done=True))
+                else:
+                    rows.append({"text": f"  {label}"})
+            rows.append({"text": ""})
+
+        _, by_hero = self._collect_open_checks()
+
+        if pass_check_keys:
+            for pass_key in enabled_pass_keys:
+                if not self.has_pass_unlock(pass_key):
+                    continue
+                if not self._pass_has_open_checks(pass_key, pass_check_keys):
+                    continue
+                label = pass_name_for_key(pass_key)
+                rows.append({"text": f"--- {label} ---"})
+                hint = pass_contributor_hint(pass_key)
+                if hint:
+                    rows.append({"text": f"  {hint}"})
+                rows.extend(self._pass_check_rows(pass_key, pass_check_keys))
+                rows.append({"text": ""})
 
         for hero in sorted(by_hero):
             checks = sorted(by_hero[hero])
@@ -155,6 +238,9 @@ class HoTSTracker:
             rows.append({"text": f"--- {hero} ({role_display(get_role(hero))}) ---"})
             for name in checks:
                 rows.append({"text": f"  {name.split(': ', 1)[-1]}"})
+
+        while rows and rows[-1] == {"text": ""}:
+            rows.pop()
 
         if not rows:
             rows = [{"text": "No open checks for unlocked heroes."}]
@@ -173,14 +259,15 @@ class HoTSTracker:
             rows.append({"text": ""})
 
         if self.ctx.use_role_passes:
-            rows.append({"text": "Role passes:"})
-            for pass_key in PASS_KEYS:
+            sd = getattr(self.ctx, "slot_data", {}) or {}
+            enabled_pass_keys = sd.get("enabled_pass_keys", [])
+            rows.append({"text": "Role passes in seed:"})
+            for pass_key in enabled_pass_keys:
                 label = pass_name_for_key(pass_key)
-                rows.append(
-                    self._line(f"  {label}", done=pass_key in self.ctx.unlocked_roles)
-                    if pass_key in self.ctx.unlocked_roles
-                    else {"text": f"  {label}"}
-                )
+                if pass_key in self.ctx.unlocked_roles:
+                    rows.append(self._line(f"  {label}", done=True))
+                else:
+                    rows.append({"text": f"  {label}"})
             rows.append({"text": ""})
 
         rows.append({"text": "Hero unlocks:"})

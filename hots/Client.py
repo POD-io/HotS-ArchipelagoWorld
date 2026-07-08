@@ -13,7 +13,8 @@ from CommonClient import (
 from Utils import user_path
 from .Challenges import (
     HERO_CHECKS, ALL_HEROES, detect_checks, hero_from_replay_name, location_name,
-    get_pass_key, pass_key_from_item_name,
+    get_pass_key, pass_key_from_item_name, pass_location_name,
+    XP_PASS_18K, XP_PASS_40K, TIMED_WIN_18, PASS_XP_THRESHOLDS,
 )
 from .Locations import location_name_to_id
 from .ReplayParser import battle_tags_match, parse_replay
@@ -205,6 +206,13 @@ class HoTSClient(CommonContext):
         self.enabled_heroes: list[str] = []
         self.hero_checks: dict[str, list[str]] = {}
         self.goal_location_ids: set[int] = set()
+        self.enabled_pass_keys: list[str] = []
+        self.pass_check_keys: list[str] = []
+        self.pass_location_names: list[str] = []
+        self.pass_xp_thresholds: dict[str, int] = dict(PASS_XP_THRESHOLDS)
+        self.timed_win_max_seconds: int = 18 * 60
+        self.include_timed_win_check: bool = False
+        self.pass_xp_totals: dict[str, int] = {}
         self.tracker: HoTSTracker | None = None
         self.tracker_enabled = True
         self.slot_data: dict = {}
@@ -226,6 +234,10 @@ class HoTSClient(CommonContext):
                 self.checked_locations.update(args["checked_locations"])
             if self.tracker:
                 self.tracker.refresh()
+        elif cmd in ("Retrieved", "SetReply"):
+            self._sync_pass_xp_from_storage()
+            if self.tracker:
+                self.tracker.refresh()
 
     def _on_connected(self, args: dict):
         sd = args.get("slot_data", {})
@@ -243,6 +255,13 @@ class HoTSClient(CommonContext):
         self.enabled_heroes = sd.get("enabled_heroes", sd.get("available_heroes", []))
         self.hero_checks = sd.get("hero_checks", {})
         self.goal_location_ids = set(sd.get("goal_location_ids", []))
+        self.enabled_pass_keys = list(sd.get("enabled_pass_keys", []))
+        self.pass_check_keys = list(sd.get("pass_check_keys", []))
+        self.pass_location_names = list(sd.get("pass_location_names", []))
+        self.pass_xp_thresholds = dict(sd.get("pass_xp_thresholds", PASS_XP_THRESHOLDS))
+        self.timed_win_max_seconds = int(sd.get("timed_win_max_seconds", 18 * 60))
+        self.include_timed_win_check = bool(sd.get("include_timed_win_check", False))
+        self.pass_xp_totals = {pass_key: 0 for pass_key in self.enabled_pass_keys}
         self.checked_locations.update(args.get("checked_locations", []))
         self.unlocked_heroes.clear()
         self.unlocked_roles.clear()
@@ -274,7 +293,69 @@ class HoTSClient(CommonContext):
             logger.warning("[HotS] No replay folders configured - checks will not be detected.")
         if self.tracker:
             self.tracker.refresh()
+        self._setup_pass_data_storage()
+        if self.enabled_pass_keys and XP_PASS_18K in self.pass_check_keys:
+            asyncio.create_task(self._reconcile_all_pass_xp_checks())
         asyncio.create_task(self._check_goal())
+
+    def _xp_storage_key(self, pass_key: str) -> str:
+        return f"hots_xp_{self.team}_{self.slot}_{pass_key}"
+
+    def _setup_pass_data_storage(self) -> None:
+        if not self.use_role_passes or XP_PASS_18K not in self.pass_check_keys:
+            return
+        keys = [self._xp_storage_key(pass_key) for pass_key in self.enabled_pass_keys]
+        if keys:
+            self.set_notify(*keys)
+        self._sync_pass_xp_from_storage()
+
+    def _sync_pass_xp_from_storage(self) -> None:
+        if not self.enabled_pass_keys:
+            return
+        for pass_key in self.enabled_pass_keys:
+            key = self._xp_storage_key(pass_key)
+            value = self.stored_data.get(key, 0)
+            if isinstance(value, (int, float)):
+                self.pass_xp_totals[pass_key] = int(value)
+
+    async def _reconcile_pass_xp_checks(self, pass_key: str, total: int | None = None) -> list[int]:
+        if XP_PASS_18K not in self.pass_check_keys:
+            return []
+        total = self.pass_xp_totals.get(pass_key, 0) if total is None else total
+        new_ids: list[int] = []
+        for check_key, threshold in self.pass_xp_thresholds.items():
+            if check_key not in self.pass_check_keys:
+                continue
+            if total < threshold:
+                continue
+            loc_name = pass_location_name(pass_key, check_key)
+            loc_id = location_name_to_id.get(loc_name)
+            if loc_id is None or loc_id in self.checked_locations:
+                continue
+            new_ids.append(loc_id)
+        if new_ids:
+            self.checked_locations.update(new_ids)
+            await self.send_msgs([{"cmd": "LocationChecks", "locations": new_ids}])
+        return new_ids
+
+    async def _credit_pass_xp(self, pass_key: str, amount: int) -> None:
+        if amount <= 0 or XP_PASS_18K not in self.pass_check_keys:
+            return
+        current = self.pass_xp_totals.get(pass_key, 0)
+        new_total = current + amount
+        self.pass_xp_totals[pass_key] = new_total
+        await self.send_msgs([{
+            "cmd": "Set",
+            "key": self._xp_storage_key(pass_key),
+            "default": 0,
+            "want_reply": False,
+            "operations": [{"operation": "add", "value": amount}],
+        }])
+        await self._reconcile_pass_xp_checks(pass_key, new_total)
+
+    async def _reconcile_all_pass_xp_checks(self) -> None:
+        for pass_key in self.enabled_pass_keys:
+            await self._reconcile_pass_xp_checks(pass_key)
 
     def _on_items(self, items):
         for item in items:
@@ -376,10 +457,24 @@ class HoTSClient(CommonContext):
             i for i in _checks_to_loc_ids(hero, fired, self.hero_checks or None)
             if i not in self.checked_locations
         ]
+        pass_key = get_pass_key(hero)
+        if (
+            self.include_timed_win_check
+            and TIMED_WIN_18 in self.pass_check_keys
+            and result.result == "Win"
+            and result.duration_seconds <= self.timed_win_max_seconds
+        ):
+            timed_loc = pass_location_name(pass_key, TIMED_WIN_18)
+            timed_id = location_name_to_id.get(timed_loc)
+            if timed_id is not None and timed_id not in self.checked_locations:
+                new_ids.append(timed_id)
         if new_ids:
             self.checked_locations.update(new_ids)
             await self.send_msgs([{"cmd": "LocationChecks", "locations": new_ids}])
-        else:
+        xp_amount = int(result.score.get("ExperienceContribution", 0) or 0)
+        if xp_amount > 0 and pass_key in self.enabled_pass_keys:
+            await self._credit_pass_xp(pass_key, xp_amount)
+        if not new_ids and xp_amount <= 0:
             logger.info(
                 f"[HotS] No new checks for {hero} "
                 f"(result: {result.result}, map: {result.map_name})"

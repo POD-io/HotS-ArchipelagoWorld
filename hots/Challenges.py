@@ -2,6 +2,20 @@ import unicodedata
 
 WIN = "win"
 
+XP_PASS_18K = "xp_pass_18k"
+XP_PASS_40K = "xp_pass_40k"
+TIMED_WIN_18 = "timed_win_18"
+
+PASS_XP_CHECKS: list[str] = [XP_PASS_18K, XP_PASS_40K]
+PASS_TIMED_WIN_CHECKS: list[str] = [TIMED_WIN_18]
+
+PASS_XP_THRESHOLDS: dict[str, int] = {
+    XP_PASS_18K: 18_000,
+    XP_PASS_40K: 40_000,
+}
+
+TIMED_WIN_MAX_SECONDS = 18 * 60
+
 LEVEL_20 = "level_20"
 
 TAKEDOWNS_1 = "takedowns_1"
@@ -52,6 +66,9 @@ CHECK_DESCRIPTIONS: dict[str, str] = {
     MINION_50:           "Kill 50 minions",
     ASSISTS_8:           "Get 8 assists",
     MERC_2:              "Capture 2 mercenary camps",
+    XP_PASS_18K:         "Amass 18,000 XP",
+    XP_PASS_40K:         "Amass 40,000 XP",
+    TIMED_WIN_18:        "Win in under 18 minutes",
 }
 
 ROLE_CHECKS: dict[str, list[str]] = {
@@ -225,6 +242,21 @@ def role_display(role: str) -> str:
     return ROLE_DISPLAY.get(role, role.replace("_", " ").title())
 
 
+def pass_contributor_hint(pass_key: str) -> str | None:
+    """Short tracker note when multiple check-roles share one pass bucket."""
+    labels: list[str] = []
+    for role, mapped_pass in ROLE_TO_PASS.items():
+        if mapped_pass != pass_key:
+            continue
+        label = role_display(role)
+        if label not in labels:
+            labels.append(label)
+    if len(labels) <= 1:
+        return None
+    pluralized = [f"{label}s" if not label.endswith("s") else label for label in labels]
+    return f"{' + '.join(pluralized)} count toward this pass"
+
+
 EASY_MODE_REMOVED: dict[str, frozenset[str]] = {
     "tank": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_25K}),
     "bruiser": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_50K}),
@@ -272,6 +304,31 @@ def _normalize_hero_name(name: str) -> str:
 
 def location_name(hero: str, check_key: str) -> str:
     return f"{hero}: {CHECK_DESCRIPTIONS[check_key]}"
+
+
+def pass_location_name(pass_key: str, check_key: str) -> str:
+    return f"{pass_name_for_key(pass_key)}: {CHECK_DESCRIPTIONS[check_key]}"
+
+
+def pass_check_keys_for_seed(use_role_passes: bool, include_timed_win: bool) -> list[str]:
+    if not use_role_passes:
+        return []
+    keys = list(PASS_XP_CHECKS)
+    if include_timed_win:
+        keys.append(TIMED_WIN_18)
+    return keys
+
+
+def pass_location_names_for_seed(
+    enabled_pass_keys: list[str],
+    use_role_passes: bool,
+    include_timed_win: bool,
+) -> list[str]:
+    return [
+        pass_location_name(pass_key, check_key)
+        for pass_key in enabled_pass_keys
+        for check_key in pass_check_keys_for_seed(use_role_passes, include_timed_win)
+    ]
 
 
 def hero_from_replay_name(replay_hero: str) -> str | None:
