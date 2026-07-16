@@ -30,12 +30,24 @@ class HoTSTracker:
             return True
         return pass_key in self.ctx.unlocked_roles
 
+    def has_hero_for_pass(self, pass_key: str) -> bool:
+        """True when at least one unlocked hero belongs to this pass bucket."""
+        if not self.ctx.use_role_passes:
+            return True
+        return any(
+            get_pass_key(hero) == pass_key and self.hero_unlocked(hero)
+            for hero in self.ctx.enabled_heroes
+        )
+
+    def can_do_pass_checks(self, pass_key: str) -> bool:
+        return self.has_pass_unlock(pass_key) and self.has_hero_for_pass(pass_key)
+
     def location_accessible(self, loc_name: str) -> bool:
         data = location_table.get(loc_name)
         if not data or not data.hero and not data.pass_key:
             return True
         if data.pass_key:
-            return self.has_pass_unlock(data.pass_key)
+            return self.can_do_pass_checks(data.pass_key)
         return self.hero_unlocked(data.hero)
 
     def is_checked(self, loc_name: str) -> bool:
@@ -219,7 +231,7 @@ class HoTSTracker:
 
         if pass_check_keys:
             for pass_key in enabled_pass_keys:
-                if not self.has_pass_unlock(pass_key):
+                if not self.can_do_pass_checks(pass_key):
                     continue
                 if not self._pass_has_open_checks(pass_key, pass_check_keys):
                     continue

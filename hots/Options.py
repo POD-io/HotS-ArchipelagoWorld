@@ -150,6 +150,15 @@ class RemoveHardestChecks(DefaultOnToggle):
     default = 0
 
 
+class CumulativeChecks(DefaultOnToggle):
+    """
+    When on, stat-based hero checks (damage, healing, takedowns, etc.) add up across
+    games with that hero. Allows for a more casual style of play.
+    """
+    display_name = "Cumulative Checks"
+    default = 0
+
+
 class IncludeTimedWinCheck(DefaultOnToggle):
     """
     When Role Passes is on, add one timed win check per role pass bucket (win in under 18 minutes).
@@ -163,6 +172,7 @@ class IncludeTimedWinCheck(DefaultOnToggle):
 class HoTSOptions(PerGameCommonOptions):
     enabled_heroes: EnabledHeroes
     hero_pool_size: HeroPoolSize
+    cumulative_checks: CumulativeChecks
     remove_hardest_checks: RemoveHardestChecks
     goal:             GoalMode
     goal_hero_count:  GoalHeroCount
@@ -173,7 +183,7 @@ class HoTSOptions(PerGameCommonOptions):
 
 
 hots_option_groups = [
-    OptionGroup("Heroes", [EnabledHeroes, HeroPoolSize, RemoveHardestChecks]),
+    OptionGroup("Heroes", [EnabledHeroes, HeroPoolSize, CumulativeChecks, RemoveHardestChecks]),
     OptionGroup("Victory", [GoalMode, GoalHeroCount, GoalHero]),
     OptionGroup("Unlock System", [RolePasses, ExtraStartingHeroes, IncludeTimedWinCheck]),
 ]

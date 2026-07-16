@@ -161,9 +161,7 @@ class HoTSWorld(World):
         """Keep goal heroes off the starting roster when the pool has other options."""
         if len(self.enabled_heroes) <= 1:
             return set()
-        if self.goal_mode in ("distinct_wins", "random_heroes"):
-            return set(self.goal_heroes)
-        return set()
+        return set(self.goal_heroes)
 
     def _eligible_starters(self, heroes: list[str]) -> list[str]:
         excluded = self._starters_excluded_heroes()
@@ -367,6 +365,7 @@ class HoTSWorld(World):
         return {
             "enabled_heroes": self.enabled_heroes,
             "hero_checks": self.hero_checks,
+            "cumulative_checks": bool(self.options.cumulative_checks.value),
             "remove_hardest_checks": bool(self.options.remove_hardest_checks.value),
             "goal_mode": self.goal_mode,
             "goal_heroes": self.goal_heroes,
@@ -399,6 +398,8 @@ class HoTSWorld(World):
         if pool_size > 0:
             spoiler_handle.write(f"Hero Pool Size:                  {pool_size}\n")
         spoiler_handle.write(f"Selected Heroes:                 {', '.join(self.enabled_heroes)}\n")
+        if bool(self.options.cumulative_checks.value):
+            spoiler_handle.write("Cumulative Checks:               yes\n")
         if bool(self.options.remove_hardest_checks.value):
             spoiler_handle.write("Remove Hardest Checks:           yes\n")
         if len(self.starting_heroes) > 1:

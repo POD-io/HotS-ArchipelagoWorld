@@ -175,6 +175,13 @@ Heroes of the Storm:
     random-high: 0 # random value weighted towards higher values
     random-range-0-90: 0 # random value between 0 and 90
 
+  cumulative_checks:
+    # When on, stat-based hero checks (damage, healing, takedowns, etc.) add up across
+    # games with that hero. Win and reach level 20 still require a single match.
+    # Progress is stored on the Archipelago server per slot (like role pass XP).
+    'false': 50
+    'true': 0
+
   remove_hardest_checks:
     # When off, every role keeps all checks. When on, each role drops its hardest checks:
     # highest takedown count, highest hero/heal/siege/damage tier, 8 assists (healers),

@@ -12,7 +12,8 @@ from CommonClient import (
 )
 from Utils import user_path
 from .Challenges import (
-    HERO_CHECKS, ALL_HEROES, detect_checks, hero_from_replay_name, location_name,
+    HERO_CHECKS, ALL_HEROES, detect_checks, detect_instant_checks, detect_cumulative_checks,
+    hero_from_replay_name, location_name, score_fields_for_check_keys, HERO_TO_YAML_KEY,
     get_pass_key, pass_key_from_item_name, pass_location_name,
     XP_PASS_18K, XP_PASS_40K, TIMED_WIN_18, PASS_XP_THRESHOLDS,
 )
@@ -212,7 +213,9 @@ class HoTSClient(CommonContext):
         self.pass_xp_thresholds: dict[str, int] = dict(PASS_XP_THRESHOLDS)
         self.timed_win_max_seconds: int = 18 * 60
         self.include_timed_win_check: bool = False
+        self.cumulative_checks: bool = False
         self.pass_xp_totals: dict[str, int] = {}
+        self.hero_stat_totals: dict[str, dict[str, int]] = {}
         self.tracker: HoTSTracker | None = None
         self.tracker_enabled = True
         self.slot_data: dict = {}
@@ -236,6 +239,7 @@ class HoTSClient(CommonContext):
                 self.tracker.refresh()
         elif cmd in ("Retrieved", "SetReply"):
             self._sync_pass_xp_from_storage()
+            self._sync_hero_stats_from_storage()
             if self.tracker:
                 self.tracker.refresh()
 
@@ -261,7 +265,9 @@ class HoTSClient(CommonContext):
         self.pass_xp_thresholds = dict(sd.get("pass_xp_thresholds", PASS_XP_THRESHOLDS))
         self.timed_win_max_seconds = int(sd.get("timed_win_max_seconds", 18 * 60))
         self.include_timed_win_check = bool(sd.get("include_timed_win_check", False))
+        self.cumulative_checks = bool(sd.get("cumulative_checks", False))
         self.pass_xp_totals = {pass_key: 0 for pass_key in self.enabled_pass_keys}
+        self.hero_stat_totals = {hero: {} for hero in self.enabled_heroes}
         self.checked_locations.update(args.get("checked_locations", []))
         self.unlocked_heroes.clear()
         self.unlocked_roles.clear()
@@ -294,8 +300,12 @@ class HoTSClient(CommonContext):
         if self.tracker:
             self.tracker.refresh()
         self._setup_pass_data_storage()
+        if self.cumulative_checks:
+            self._setup_hero_stat_storage()
         if self.enabled_pass_keys and XP_PASS_18K in self.pass_check_keys:
             asyncio.create_task(self._reconcile_all_pass_xp_checks())
+        if self.cumulative_checks:
+            asyncio.create_task(self._reconcile_all_hero_checks())
         asyncio.create_task(self._check_goal())
 
     def _xp_storage_key(self, pass_key: str) -> str:
@@ -320,6 +330,8 @@ class HoTSClient(CommonContext):
 
     async def _reconcile_pass_xp_checks(self, pass_key: str, total: int | None = None) -> list[int]:
         if XP_PASS_18K not in self.pass_check_keys:
+            return []
+        if not self._has_unlocked_hero_for_pass(pass_key):
             return []
         total = self.pass_xp_totals.get(pass_key, 0) if total is None else total
         new_ids: list[int] = []
@@ -357,6 +369,72 @@ class HoTSClient(CommonContext):
         for pass_key in self.enabled_pass_keys:
             await self._reconcile_pass_xp_checks(pass_key)
 
+    def _hero_stat_storage_key(self, hero: str, field: str) -> str:
+        safe_hero = HERO_TO_YAML_KEY.get(hero, hero).replace(" ", "_")
+        return f"hots_stat_{self.team}_{self.slot}_{safe_hero}_{field}"
+
+    def _setup_hero_stat_storage(self) -> None:
+        keys: list[str] = []
+        for hero in self.enabled_heroes:
+            check_keys = self.hero_checks.get(hero, HERO_CHECKS.get(hero, []))
+            for field in score_fields_for_check_keys(check_keys):
+                keys.append(self._hero_stat_storage_key(hero, field))
+        if keys:
+            self.set_notify(*keys)
+        self._sync_hero_stats_from_storage()
+
+    def _sync_hero_stats_from_storage(self) -> None:
+        if not self.cumulative_checks:
+            return
+        for hero in self.enabled_heroes:
+            check_keys = self.hero_checks.get(hero, HERO_CHECKS.get(hero, []))
+            totals = self.hero_stat_totals.setdefault(hero, {})
+            for field in score_fields_for_check_keys(check_keys):
+                key = self._hero_stat_storage_key(hero, field)
+                value = self.stored_data.get(key, 0)
+                if isinstance(value, (int, float)):
+                    totals[field] = int(value)
+
+    async def _credit_hero_stats(self, hero: str, score: dict) -> None:
+        if not self.cumulative_checks:
+            return
+        check_keys = self.hero_checks.get(hero, HERO_CHECKS.get(hero, []))
+        totals = self.hero_stat_totals.setdefault(hero, {})
+        for field in score_fields_for_check_keys(check_keys):
+            amount = int(score.get(field, 0) or 0)
+            if amount <= 0:
+                continue
+            totals[field] = totals.get(field, 0) + amount
+            await self.send_msgs([{
+                "cmd": "Set",
+                "key": self._hero_stat_storage_key(hero, field),
+                "default": 0,
+                "want_reply": False,
+                "operations": [{"operation": "add", "value": amount}],
+            }])
+
+    async def _reconcile_hero_checks(self, hero: str) -> list[int]:
+        if not self.cumulative_checks:
+            return []
+        check_keys = self.hero_checks.get(hero, HERO_CHECKS.get(hero, []))
+        totals = self.hero_stat_totals.get(hero, {})
+        fired = detect_cumulative_checks(totals, check_keys)
+        new_ids = [
+            loc_id
+            for check_key in check_keys
+            if check_key in fired
+            for loc_id in [location_name_to_id.get(location_name(hero, check_key))]
+            if loc_id is not None and loc_id not in self.checked_locations
+        ]
+        if new_ids:
+            self.checked_locations.update(new_ids)
+            await self.send_msgs([{"cmd": "LocationChecks", "locations": new_ids}])
+        return new_ids
+
+    async def _reconcile_all_hero_checks(self) -> None:
+        for hero in self.enabled_heroes:
+            await self._reconcile_hero_checks(hero)
+
     def _on_items(self, items):
         for item in items:
             name = self.item_names.lookup_in_game(item.item)
@@ -378,6 +456,14 @@ class HoTSClient(CommonContext):
         if self.use_role_passes and get_pass_key(hero) not in self.unlocked_roles:
             return False
         return True
+
+    def _has_unlocked_hero_for_pass(self, pass_key: str) -> bool:
+        if not self.use_role_passes:
+            return True
+        return any(
+            get_pass_key(hero) == pass_key and self._hero_unlocked(hero)
+            for hero in self.enabled_heroes
+        )
 
     def _battle_tag_from_replay(self, path: Optional[str]) -> Optional[str]:
         if not path:
@@ -453,6 +539,14 @@ class HoTSClient(CommonContext):
             )
             return
         fired = detect_checks(result.score, result.result, result.level_history)
+        if self.cumulative_checks:
+            await self._credit_hero_stats(hero, result.score)
+            instant = detect_instant_checks(result.score, result.result, result.level_history)
+            cumulative = detect_cumulative_checks(
+                self.hero_stat_totals.get(hero, {}),
+                self.hero_checks.get(hero, HERO_CHECKS.get(hero, [])),
+            )
+            fired = instant | cumulative
         new_ids = [
             i for i in _checks_to_loc_ids(hero, fired, self.hero_checks or None)
             if i not in self.checked_locations
@@ -463,6 +557,7 @@ class HoTSClient(CommonContext):
             and TIMED_WIN_18 in self.pass_check_keys
             and result.result == "Win"
             and result.duration_seconds <= self.timed_win_max_seconds
+            and self._has_unlocked_hero_for_pass(pass_key)
         ):
             timed_loc = pass_location_name(pass_key, TIMED_WIN_18)
             timed_id = location_name_to_id.get(timed_loc)

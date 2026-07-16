@@ -113,6 +113,7 @@ HERO_ROLES: dict[str, str] = {
     "Mal'Ganis": "tank", "Muradin": "tank", "Stitches": "tank", "Tyrael": "tank",
     # Bruiser
     "Artanis": "bruiser", "Chen": "bruiser", "D.Va": "bruiser", "Dehaka": "bruiser",
+    "Gazlowe": "bruiser",
     "Deathwing": "bruiser", "Imperius": "bruiser", "Leoric": "bruiser",
     "Malthael": "bruiser", "Mei": "bruiser", "Ragnaros": "bruiser", "Rexxar": "bruiser",
     "Sonya": "bruiser", "Thrall": "bruiser", "Varian": "bruiser", "Xul": "bruiser",
@@ -123,7 +124,7 @@ HERO_ROLES: dict[str, str] = {
     "Lt. Morales": "healer", "Lúcio": "healer", "Malfurion": "healer", "Rehgar": "healer",
     "Stukov": "healer", "Tyrande": "healer", "Uther": "healer", "Whitemane": "healer",
     # Support (macro / siege bucket — not healer; no healing checks)
-    "Abathur": "support", "Gazlowe": "support", "Medivh": "support", "Murky": "support",
+    "Abathur": "support", "Medivh": "support", "Murky": "support",
     "The Lost Vikings": "support", "Zarya": "support",
     # Melee Assassin
     "Alarak": "melee_assassin", "Hogger": "melee_assassin",
@@ -228,6 +229,12 @@ def get_role(hero: str) -> str:
 def get_pass_key(hero: str) -> str:
     """Pass bucket used for unlock items."""
     return ROLE_TO_PASS[get_role(hero)]
+
+
+def heroes_in_pass(pass_key: str, heroes: list[str] | None = None) -> list[str]:
+    """Heroes whose unlock/pass bucket matches pass_key."""
+    pool = heroes if heroes is not None else ALL_HEROES
+    return [hero for hero in pool if get_pass_key(hero) == pass_key]
 
 
 def pass_name_for_key(pass_key: str) -> str:
@@ -342,6 +349,56 @@ def hero_from_replay_name(replay_hero: str) -> str | None:
     return None
 
 
+SINGLE_GAME_CHECKS = frozenset({WIN, LEVEL_20})
+
+# Stat checks that can add up across games when cumulative_checks is enabled.
+CHECK_SCORE_THRESHOLDS: dict[str, tuple[str, int]] = {
+    TAKEDOWNS_1: ("Takedowns", 1),
+    TAKEDOWNS_5: ("Takedowns", 5),
+    TAKEDOWNS_10: ("Takedowns", 10),
+    TAKEDOWNS_15: ("Takedowns", 15),
+    HERO_25K: ("HeroDamage", 25_000),
+    HERO_40K: ("HeroDamage", 40_000),
+    HERO_50K: ("HeroDamage", 50_000),
+    SIEGE_50K: ("SiegeDamage", 50_000),
+    SIEGE_75K: ("SiegeDamage", 75_000),
+    SIEGE_100K: ("SiegeDamage", 100_000),
+    HEALING_40K: ("Healing", 40_000),
+    HEALING_60K: ("Healing", 60_000),
+    SOLO_KILL_1: ("SoloKill", 1),
+    SOLO_KILL_3: ("SoloKill", 3),
+    MINION_15: ("MinionKills", 15),
+    MINION_25: ("MinionKills", 25),
+    MINION_40: ("MinionKills", 40),
+    MINION_50: ("MinionKills", 50),
+    ASSISTS_8: ("Assists", 8),
+    MERC_2: ("MercCampCaptures", 2),
+}
+
+
+def score_fields_for_check_keys(check_keys: list[str]) -> set[str]:
+    return {
+        CHECK_SCORE_THRESHOLDS[key][0]
+        for key in check_keys
+        if key in CHECK_SCORE_THRESHOLDS
+    }
+
+
+def detect_instant_checks(score: dict, result: str, level_history: list | None = None) -> set[str]:
+    return detect_checks(score, result, level_history) & SINGLE_GAME_CHECKS
+
+
+def detect_cumulative_checks(stat_totals: dict[str, int], check_keys: list[str]) -> set[str]:
+    fired: set[str] = set()
+    for key in check_keys:
+        if key not in CHECK_SCORE_THRESHOLDS:
+            continue
+        field, threshold = CHECK_SCORE_THRESHOLDS[key]
+        if stat_totals.get(field, 0) >= threshold:
+            fired.add(key)
+    return fired
+
+
 def detect_checks(score: dict, result: str, level_history: list | None = None) -> set[str]:
     fired: set[str] = set()
     if result == "Win":
@@ -351,57 +408,8 @@ def detect_checks(score: dict, result: str, level_history: list | None = None) -
     if max_level >= 20:
         fired.add(LEVEL_20)
 
-    takedowns = score.get("Takedowns", 0)
-    if takedowns >= 1:
-        fired.add(TAKEDOWNS_1)
-    if takedowns >= 5:
-        fired.add(TAKEDOWNS_5)
-    if takedowns >= 10:
-        fired.add(TAKEDOWNS_10)
-    if takedowns >= 15:
-        fired.add(TAKEDOWNS_15)
-
-    hero_damage = score.get("HeroDamage", 0)
-    if hero_damage >= 25_000:
-        fired.add(HERO_25K)
-    if hero_damage >= 40_000:
-        fired.add(HERO_40K)
-    if hero_damage >= 50_000:
-        fired.add(HERO_50K)
-
-    siege = score.get("SiegeDamage", 0)
-    if siege >= 50_000:
-        fired.add(SIEGE_50K)
-    if siege >= 75_000:
-        fired.add(SIEGE_75K)
-    if siege >= 100_000:
-        fired.add(SIEGE_100K)
-
-    healing = score.get("Healing", 0)
-    if healing >= 40_000:
-        fired.add(HEALING_40K)
-    if healing >= 60_000:
-        fired.add(HEALING_60K)
-
-    solo = score.get("SoloKill", 0)
-    if solo >= 1:
-        fired.add(SOLO_KILL_1)
-    if solo >= 3:
-        fired.add(SOLO_KILL_3)
-
-    minions = score.get("MinionKills", 0)
-    if minions >= 15:
-        fired.add(MINION_15)
-    if minions >= 25:
-        fired.add(MINION_25)
-    if minions >= 40:
-        fired.add(MINION_40)
-    if minions >= 50:
-        fired.add(MINION_50)
-
-    if score.get("Assists", 0) >= 8:
-        fired.add(ASSISTS_8)
-    if score.get("MercCampCaptures", 0) >= 2:
-        fired.add(MERC_2)
+    for check_key, (field, threshold) in CHECK_SCORE_THRESHOLDS.items():
+        if score.get(field, 0) >= threshold:
+            fired.add(check_key)
 
     return fired
