@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 from .Challenges import (
     get_pass_key, get_role, pass_name_for_key, role_display, pass_contributor_hint,
     HERO_CHECKS, XP_PASS_18K, XP_PASS_40K, PASS_XP_THRESHOLDS,
-    pass_location_name,
+    CHECK_SCORE_THRESHOLDS, pass_location_name,
+    DAILY_QUESTS_COMPLETE, daily_quest_location_name,
 )
 from .Locations import location_table
+from .Talents import TALENT_LEVELS, parse_talent_check_key, talent_req_is_any
 
 
 class HoTSTracker:
@@ -13,7 +13,17 @@ class HoTSTracker:
         self.ctx = ctx
 
     def has_hero_unlock(self, hero: str) -> bool:
-        return hero in self.ctx.unlocked_heroes
+        if hero in self.ctx.unlocked_heroes:
+            return True
+        need = int(getattr(self.ctx, "shards_to_unlock", 5) or 5)
+        return getattr(self.ctx, "hero_shards", {}).get(hero, 0) >= need
+
+    def shard_progress(self, hero: str) -> tuple[int, int]:
+        need = int(getattr(self.ctx, "shards_to_unlock", 5) or 5)
+        have = getattr(self.ctx, "hero_shards", {}).get(hero, 0)
+        if hero in getattr(self.ctx, "full_unlock_heroes", []) or hero in self.ctx.starting_heroes:
+            return (need if hero in self.ctx.unlocked_heroes else 0, need)
+        return min(have, need), need
 
     def has_role_pass(self, hero: str) -> bool:
         if not self.ctx.use_role_passes:
@@ -44,11 +54,30 @@ class HoTSTracker:
 
     def location_accessible(self, loc_name: str) -> bool:
         data = location_table.get(loc_name)
-        if not data or not data.hero and not data.pass_key:
+        if not data:
             return True
+        if data.chest_index:
+            cost = int(getattr(self.ctx, "chest_cost_xp", 1000) or 1000)
+            need = data.chest_index * cost
+            from .Items import open_capacity_value
+            total = 0
+            for item in getattr(self.ctx, "items_received", []):
+                name = self.ctx.item_names.lookup_in_game(item.item)
+                total += open_capacity_value(name)
+            return total >= need
         if data.pass_key:
             return self.can_do_pass_checks(data.pass_key)
-        return self.hero_unlocked(data.hero)
+        if data.hero:
+            return self.hero_unlocked(data.hero)
+        if data.daily_quest_key:
+            has_slip_fn = getattr(self.ctx, "_has_daily_quest_slip", None)
+            keys = list(getattr(self.ctx, "daily_quest_keys", None) or [])
+            if data.daily_quest_key == DAILY_QUESTS_COMPLETE:
+                return bool(keys and has_slip_fn and all(has_slip_fn(k) for k in keys))
+            if keys and data.daily_quest_key == keys[0]:
+                return True
+            return bool(has_slip_fn and has_slip_fn(data.daily_quest_key))
+        return True
 
     def is_checked(self, loc_name: str) -> bool:
         data = location_table.get(loc_name)
@@ -59,7 +88,11 @@ class HoTSTracker:
     def _unlock_needs(self, hero: str) -> str:
         needs: list[str] = []
         if not self.has_hero_unlock(hero):
-            needs.append(hero)
+            have, need = self.shard_progress(hero)
+            if hero in getattr(self.ctx, "shard_heroes", []):
+                needs.append(f"shards {have}/{need}")
+            else:
+                needs.append(hero)
         if self.ctx.use_role_passes and not self.has_role_pass(hero):
             needs.append(pass_name_for_key(get_pass_key(hero)))
         return " + ".join(needs)
@@ -68,8 +101,14 @@ class HoTSTracker:
         sd = getattr(self.ctx, "slot_data", {}) or {}
         hero_checks = sd.get("hero_checks", {})
         if hero in hero_checks:
-            return len(hero_checks[hero])
-        return len(HERO_CHECKS.get(hero, []))
+            base = len(hero_checks[hero])
+        else:
+            base = len(HERO_CHECKS.get(hero, []))
+        reqs_by_hero = getattr(self.ctx, "hero_talent_requirements", None) or sd.get(
+            "hero_talent_requirements", {}
+        )
+        talent_n = len(reqs_by_hero.get(hero) or [])
+        return base + talent_n
 
     def _pass_xp_progress(self, pass_key: str) -> tuple[int, int, bool, bool]:
         thresholds = getattr(self.ctx, "pass_xp_thresholds", PASS_XP_THRESHOLDS)
@@ -80,6 +119,17 @@ class HoTSTracker:
         tier2_done = self.is_checked(pass_location_name(pass_key, XP_PASS_40K))
         goal = tier2 if not tier2_done else tier2
         return total, goal, tier1_done, tier2_done
+
+    def _talent_label(self, hero: str, level: int, loc_name: str | None = None) -> str:
+        reqs = getattr(self.ctx, "hero_talent_requirements", {}).get(hero) or []
+        req = next((r for r in reqs if int(r["level"]) == level), None)
+        base = loc_name or f"Level {level} Talent"
+        if req and talent_req_is_any(req):
+            return f"{base} (any)" if loc_name else f"Level {level} Talent (any)"
+        rank = int(req["rank"]) if req else None
+        if rank:
+            return f"{base} #{rank}" if loc_name else f"Level {level} Talent #{rank}"
+        return base if loc_name else f"Level {level} Talent"
 
     def unlocked_heroes(self) -> list[str]:
         return sorted(h for h in self.ctx.enabled_heroes if self.hero_unlocked(h))
@@ -118,44 +168,59 @@ class HoTSTracker:
         if not tab:
             return
         sd = getattr(self.ctx, "slot_data", {}) or {}
-        goal_names = sd.get("goal_location_names", [])
+        goal_names = list(sd.get("goal_location_names", []) or [])
+        goal_heroes = list(sd.get("goal_heroes", []) or [])
+        goal_mode = sd.get("goal_mode", "")
         done = sum(1 for name in goal_names if self.is_checked(name))
         rows = [
             {"text": f"Goal: {sd.get('goal_summary', '?')}"},
             {"text": f"Progress: {done}/{len(goal_names)}"},
             {"text": ""},
         ]
-        for hero in sd.get("goal_heroes", []):
-            hero_ok = self.has_hero_unlock(hero)
-            pass_ok = self.has_role_pass(hero)
-            needs = self._unlock_needs(hero)
-            if self.hero_unlocked(hero):
-                rows.append(self._line(f"{hero} — ready", done=True))
-            else:
-                rows.append({"text": f"{hero} — needs {needs or '?'}"})
-            if self.ctx.use_role_passes:
-                pass_name = pass_name_for_key(get_pass_key(hero))
-                rows.append(
-                    self._line(f"  {pass_name}", done=pass_ok)
-                    if pass_ok
-                    else {"text": f"  {pass_name}"}
-                )
-            rows.append(
-                self._line(f"  {hero}", done=hero_ok)
-                if hero_ok
-                else {"text": f"  {hero}"}
-            )
+
+        win_only = goal_mode == "distinct_wins" or (
+            goal_heroes
+            and goal_names
+            and all(name.endswith(": Win a match") for name in goal_names)
+        )
+        if win_only and goal_heroes:
+            rows.append({"text": "Heroes (win one match each):"})
+            for hero in goal_heroes:
+                win_name = f"{hero}: Win a match"
+                if self.is_checked(win_name):
+                    rows.append(self._line(f"  {hero} - done", done=True))
+                elif self.hero_unlocked(hero):
+                    rows.append({"text": f"  {hero} - ready (play and win)"})
+                else:
+                    needs = self._unlock_needs(hero)
+                    rows.append({"text": f"  {hero} - locked ({needs or '?'})"})
+            tab.content.data = rows
+            return
+
+        if goal_heroes:
+            rows.append({"text": "Goal heroes:"})
+            for hero in goal_heroes:
+                if self.hero_unlocked(hero):
+                    rows.append(self._line(f"  {hero} - unlocked", done=True))
+                else:
+                    needs = self._unlock_needs(hero)
+                    rows.append({"text": f"  {hero} - locked ({needs or '?'})"})
             rows.append({"text": ""})
 
         rows.append({"text": "Goal checks:"})
         for name in goal_names:
             if not self.location_accessible(name) and not self.is_checked(name):
                 continue
-            short = name.split(": ", 1)[-1]
+            display = name
+            data = location_table.get(name)
+            parsed = parse_talent_check_key(data.check_key) if data and data.check_key else None
+            if parsed and data.hero:
+                level, _ = parsed
+                display = self._talent_label(data.hero, level, name)
             if self.is_checked(name):
-                rows.append(self._line(f"  {short}", done=True))
+                rows.append(self._line(f"  {display}", done=True))
             else:
-                rows.append({"text": f"  {short}"})
+                rows.append({"text": f"  {display}"})
         tab.content.data = rows
 
     def _collect_open_checks(self) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
@@ -204,6 +269,40 @@ class HoTSTracker:
                 return True
         return False
 
+    def _daily_quest_rows(self) -> list[dict]:
+        """Daily Quest 1 is always listed. Later dailies wait for their unlock."""
+        """Even though Daily Quest 1 is always listed, it is not truly considered in-logic until 
+        3 associated heroes are unlocked."""
+        """This allows for some starting progress on Daily 1, but does not cause a bottleneck on the location."""
+        keys = list(getattr(self.ctx, "daily_quest_keys", None) or [])
+        if not keys:
+            return []
+        totals = getattr(self.ctx, "daily_quest_totals", {}) or {}
+        defs = getattr(self.ctx, "daily_quest_defs", {}) or {}
+        has_slip_fn = getattr(self.ctx, "_has_daily_quest_slip", None)
+        rows: list[dict] = []
+        for index, quest_key in enumerate(keys):
+            info = defs.get(quest_key) or {}
+            loc_name = daily_quest_location_name(quest_key)
+            done = self.is_checked(loc_name)
+            has_slip = bool(has_slip_fn and has_slip_fn(quest_key))
+            if index > 0 and not has_slip and not done:
+                continue
+            title = (info.get("name") or loc_name).replace("Daily Quest: ", "")
+            if done:
+                rows.append(self._line(f"  {title}", done=True))
+                continue
+            threshold = int(info.get("threshold", 0) or 0)
+            current = int(totals.get(quest_key, 0) or 0)
+            progress = f"  {current:,}/{threshold:,}" if threshold else ""
+            rows.append({"text": f"  {title}{progress}"})
+        if not rows:
+            return []
+        complete_name = daily_quest_location_name(DAILY_QUESTS_COMPLETE)
+        if self.is_checked(complete_name):
+            rows.append(self._line("  Complete all daily quests", done=True))
+        return [{"text": "--- Daily Quests ---"}, *rows, {"text": ""}]
+
     def update_tracker_tab(self) -> None:
         tab = getattr(self.ctx, "tab_tracker", None)
         if not tab:
@@ -214,6 +313,15 @@ class HoTSTracker:
 
         rows: list[dict] = []
         sd = getattr(self.ctx, "slot_data", {}) or {}
+        cons = getattr(self.ctx, "consumables", None)
+        if cons is not None and cons.stim_remaining > 0:
+            queued = cons.stim_remaining
+            matches = "match" if queued == 1 else "matches"
+            rows.append({
+                "text": f"[color=ffd24a]Stimpack active: {queued} boosted {matches} queued[/color]"
+            })
+            rows.append({"text": ""})
+        rows.extend(self._daily_quest_rows())
         pass_check_keys = sd.get("pass_check_keys", [])
         enabled_pass_keys = sd.get("enabled_pass_keys", [])
 
@@ -243,13 +351,28 @@ class HoTSTracker:
                 rows.extend(self._pass_check_rows(pass_key, pass_check_keys))
                 rows.append({"text": ""})
 
+        cumulative = bool(getattr(self.ctx, "cumulative_checks", False))
         for hero in sorted(by_hero):
-            checks = sorted(by_hero[hero])
+            checks = by_hero[hero]
             if not checks:
                 continue
             rows.append({"text": f"--- {hero} ({role_display(get_role(hero))}) ---"})
-            for name in checks:
-                rows.append({"text": f"  {name.split(': ', 1)[-1]}"})
+            totals = getattr(self.ctx, "hero_stat_totals", {}).get(hero, {}) if cumulative else {}
+            for name in self._sorted_hero_check_names(checks):
+                short = name.split(": ", 1)[-1]
+                progress = ""
+                data = location_table.get(name)
+                check_key = data.check_key if data else None
+                parsed = parse_talent_check_key(check_key) if check_key else None
+                if parsed:
+                    level, _ = parsed
+                    short = self._talent_label(hero, level)
+                if cumulative:
+                    if check_key and check_key in CHECK_SCORE_THRESHOLDS:
+                        field, threshold = CHECK_SCORE_THRESHOLDS[check_key]
+                        cur = int(totals.get(field, 0) or 0)
+                        progress = f" ({cur:,}/{threshold:,})"
+                rows.append({"text": f"  {short}{progress}"})
 
         while rows and rows[-1] == {"text": ""}:
             rows.pop()
@@ -257,6 +380,18 @@ class HoTSTracker:
         if not rows:
             rows = [{"text": "No open checks for unlocked heroes."}]
         tab.content.data = rows
+
+    def _sorted_hero_check_names(self, names: list[str]) -> list[str]:
+        def sort_key(name: str):
+            data = location_table.get(name)
+            if data and data.check_key:
+                parsed = parse_talent_check_key(data.check_key)
+                if parsed:
+                    level, rank = parsed
+                    return (1, TALENT_LEVELS.index(level) if level in TALENT_LEVELS else level, rank)
+            return (0, name.lower(), 0)
+
+        return sorted(names, key=sort_key)
 
     def update_unlocks_tab(self) -> None:
         tab = getattr(self.ctx, "tab_unlocks", None)
@@ -286,7 +421,16 @@ class HoTSTracker:
         for hero in sorted(self.ctx.enabled_heroes):
             role = get_role(hero)
             unlocked = self.hero_unlocked(hero)
-            suffix = f" ({role_display(role)}, {self._hero_check_count(hero)} checks)"
+            have, need = self.shard_progress(hero)
+            if hero in getattr(self.ctx, "shard_heroes", []):
+                shard_txt = f", shards {have}/{need}"
+            elif hero in self.ctx.starting_heroes:
+                shard_txt = ", starting"
+            elif hero in getattr(self.ctx, "full_unlock_heroes", []):
+                shard_txt = ", full unlock"
+            else:
+                shard_txt = ""
+            suffix = f" ({role_display(role)}, {self._hero_check_count(hero)} checks{shard_txt})"
             if unlocked:
                 rows.append(self._line(f"  {hero}{suffix}", done=True))
             else:
@@ -297,7 +441,13 @@ class HoTSTracker:
             rows = [{"text": "No heroes unlocked yet."}]
         tab.content.data = rows
 
+    def update_talents_tab(self) -> None:
+        panel = getattr(self.ctx, "talents_panel", None)
+        if panel is not None:
+            panel.refresh()
+
     def refresh(self) -> None:
         self.update_goal_tab()
         self.update_tracker_tab()
+        self.update_talents_tab()
         self.update_unlocks_tab()

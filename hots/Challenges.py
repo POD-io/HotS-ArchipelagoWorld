@@ -18,104 +18,25 @@ TIMED_WIN_MAX_SECONDS = 18 * 60
 
 LEVEL_20 = "level_20"
 
-TAKEDOWNS_1 = "takedowns_1"
-TAKEDOWNS_5 = "takedowns_5"
-TAKEDOWNS_10 = "takedowns_10"
-TAKEDOWNS_15 = "takedowns_15"
-
-HERO_25K = "hero_25k"
-HERO_40K = "hero_40k"
-HERO_50K = "hero_50k"
-SIEGE_50K = "siege_50k"
-SIEGE_75K = "siege_75k"
-SIEGE_100K = "siege_100k"
-HEALING_40K = "healing_40k"
-HEALING_60K = "healing_60k"
-
-SOLO_KILL_1 = "solo_kill_1"
-SOLO_KILL_3 = "solo_kill_3"
-MINION_15 = "minion_15"
-MINION_25 = "minion_25"
-MINION_40 = "minion_40"
-MINION_50 = "minion_50"
-ASSISTS_8 = "assists_8"
-MERC_2 = "merc_2"
-
-COMMON_CHECKS = [WIN, LEVEL_20]
-
 CHECK_DESCRIPTIONS: dict[str, str] = {
     WIN:                 "Win a match",
     LEVEL_20:            "Reach level 20",
-    TAKEDOWNS_1:         "Get 1 takedown",
-    TAKEDOWNS_5:         "Get 5 takedowns",
-    TAKEDOWNS_10:        "Get 10 takedowns",
-    TAKEDOWNS_15:        "Get 15 takedowns",
-    HERO_25K:            "Deal 25,000 hero damage",
-    HERO_40K:            "Deal 40,000 hero damage",
-    HERO_50K:            "Deal 50,000 hero damage",
-    SIEGE_50K:           "Deal 50,000 siege damage",
-    SIEGE_75K:           "Deal 75,000 siege damage",
-    SIEGE_100K:          "Deal 100,000 siege damage",
-    HEALING_40K:         "Restore 40,000 health",
-    HEALING_60K:         "Restore 60,000 health",
-    SOLO_KILL_1:         "Get 1 solo kill",
-    SOLO_KILL_3:         "Get 3 solo kills",
-    MINION_15:           "Kill 15 minions",
-    MINION_25:           "Kill 25 minions",
-    MINION_40:           "Kill 40 minions",
-    MINION_50:           "Kill 50 minions",
-    ASSISTS_8:           "Get 8 assists",
-    MERC_2:              "Capture 2 mercenary camps",
     XP_PASS_18K:         "Amass 18,000 XP",
     XP_PASS_40K:         "Amass 40,000 XP",
     TIMED_WIN_18:        "Win in under 18 minutes",
-}
-
-ROLE_CHECKS: dict[str, list[str]] = {
-    "tank": COMMON_CHECKS + [
-        TAKEDOWNS_5, TAKEDOWNS_10, TAKEDOWNS_15,
-        HERO_25K,
-        ASSISTS_8,
-        MERC_2,
-    ],
-    "bruiser": COMMON_CHECKS + [
-        TAKEDOWNS_5, TAKEDOWNS_10, TAKEDOWNS_15,
-        HERO_40K, HERO_50K,
-        SOLO_KILL_1,
-        MERC_2,
-    ],
-    "healer": COMMON_CHECKS + [
-        TAKEDOWNS_1, TAKEDOWNS_5, TAKEDOWNS_10,
-        HEALING_40K, HEALING_60K,
-        ASSISTS_8,
-    ],
-    "support": COMMON_CHECKS + [
-        TAKEDOWNS_1, TAKEDOWNS_5, TAKEDOWNS_10,
-        ASSISTS_8,
-        SIEGE_50K,
-    ],
-    "melee_assassin": COMMON_CHECKS + [
-        TAKEDOWNS_5, TAKEDOWNS_10, TAKEDOWNS_15,
-        HERO_50K,
-        SOLO_KILL_1, SOLO_KILL_3,
-    ],
-    "ranged_assassin": COMMON_CHECKS + [
-        TAKEDOWNS_5, TAKEDOWNS_10, TAKEDOWNS_15,
-        HERO_50K,
-        SIEGE_50K, SIEGE_75K,
-    ],
 }
 
 HERO_ROLES: dict[str, str] = {
     # Tank
     "Anub'arak": "tank", "Arthas": "tank", "Blaze": "tank", "Cho": "tank",
     "Diablo": "tank", "E.T.C.": "tank", "Garrosh": "tank", "Johanna": "tank",
-    "Mal'Ganis": "tank", "Muradin": "tank", "Stitches": "tank", "Tyrael": "tank",
+    "Mal'Ganis": "tank", "Mei": "tank", "Muradin": "tank", "Stitches": "tank",
+    "Tyrael": "tank",
     # Bruiser
     "Artanis": "bruiser", "Chen": "bruiser", "D.Va": "bruiser", "Dehaka": "bruiser",
     "Gazlowe": "bruiser",
     "Deathwing": "bruiser", "Imperius": "bruiser", "Leoric": "bruiser",
-    "Malthael": "bruiser", "Mei": "bruiser", "Ragnaros": "bruiser", "Rexxar": "bruiser",
+    "Malthael": "bruiser", "Ragnaros": "bruiser", "Rexxar": "bruiser",
     "Sonya": "bruiser", "Thrall": "bruiser", "Varian": "bruiser", "Xul": "bruiser",
     "Yrel": "bruiser",
     # Healer
@@ -145,7 +66,111 @@ HERO_ROLES: dict[str, str] = {
     "Zagara": "ranged_assassin", "Zul'jin": "ranged_assassin",
 }
 
-ALL_HEROES: list[str] = sorted(HERO_ROLES.keys())
+def hero_sort_key(hero: str) -> str:
+    name = hero
+    if name.lower().startswith("the "):
+        name = name[4:]
+    return name.casefold()
+
+ALL_HEROES: list[str] = sorted(HERO_ROLES.keys(), key=hero_sort_key)
+
+CAP_WIN = "can_win"
+CAP_LEVEL_20 = "can_level_20"
+CAP_TAKEDOWN = "can_takedown"
+CAP_HERO_DAMAGE = "can_hero_damage"
+CAP_SIEGE = "can_siege"
+CAP_HEAL = "can_heal"
+CAP_SELF_HEAL = "can_self_heal"
+CAP_PROTECT = "can_protect"
+CAP_SOLO_KILL = "can_solo_kill"
+CAP_MINION = "can_minion"
+CAP_ASSIST = "can_assist"
+CAP_MERC = "can_merc"
+CAP_REGEN_GLOBE = "can_regen_globe"
+CAP_STUN = "can_stun"
+CAP_SILENCE = "can_silence"
+
+ALL_CAPABILITIES: tuple[str, ...] = (
+    CAP_WIN, CAP_LEVEL_20, CAP_TAKEDOWN, CAP_HERO_DAMAGE, CAP_SIEGE,
+    CAP_HEAL, CAP_SELF_HEAL, CAP_PROTECT, CAP_SOLO_KILL, CAP_MINION,
+    CAP_ASSIST, CAP_MERC, CAP_REGEN_GLOBE, CAP_STUN, CAP_SILENCE,
+)
+
+CAPABILITY_CHECK_KEYS: dict[str, tuple[str, ...]] = {
+    CAP_WIN: (WIN,),
+    CAP_LEVEL_20: (LEVEL_20,),
+}
+
+HERO_CAPABILITY_CHECKS: dict[str, dict[str, str]] = {}
+
+CAPABILITY_HEROES: dict[str, frozenset[str]] = {
+    cap: frozenset() for cap in ALL_CAPABILITIES
+}
+
+def _apply_hero_tier_tables(
+    hero_checks: dict[str, dict[str, str]],
+    descriptions: dict[str, str],
+    thresholds: dict[str, dict],
+) -> None:
+    global CAPABILITY_CHECK_KEYS, CAPABILITY_HEROES, HERO_CAPABILITY_CHECKS
+    global CHECK_DESCRIPTIONS, CHECK_SCORE_THRESHOLDS
+
+    HERO_CAPABILITY_CHECKS = {
+        hero: dict(caps)
+        for hero, caps in hero_checks.items()
+        if hero in HERO_ROLES
+    }
+    for hero in ALL_HEROES:
+        HERO_CAPABILITY_CHECKS.setdefault(hero, {})[CAP_WIN] = WIN
+
+    pools: dict[str, set[str]] = {cap: set() for cap in ALL_CAPABILITIES}
+    for hero, caps in HERO_CAPABILITY_CHECKS.items():
+        for cap in caps:
+            if cap in pools:
+                pools[cap].add(hero)
+    CAPABILITY_HEROES = {cap: frozenset(heroes) for cap, heroes in pools.items()}
+
+    keys_by_cap: dict[str, list[str]] = {cap: [] for cap in ALL_CAPABILITIES}
+    seen_by_cap: dict[str, set[str]] = {cap: set() for cap in ALL_CAPABILITIES}
+    for caps in HERO_CAPABILITY_CHECKS.values():
+        for cap, key in caps.items():
+            if cap not in seen_by_cap or key in seen_by_cap[cap]:
+                continue
+            seen_by_cap[cap].add(key)
+            keys_by_cap[cap].append(key)
+    CAPABILITY_CHECK_KEYS = {cap: tuple(keys_by_cap[cap]) for cap in ALL_CAPABILITIES}
+
+    CHECK_DESCRIPTIONS.update({k: v for k, v in descriptions.items() if isinstance(v, str)})
+
+    for key, meta in thresholds.items():
+        if key == WIN:
+            continue
+        field = meta.get("field")
+        threshold = meta.get("threshold")
+        if field and isinstance(threshold, int):
+            CHECK_SCORE_THRESHOLDS[key] = (field, threshold)
+
+def hero_has_capability(hero: str, capability: str) -> bool:
+    return capability in capabilities_for_hero(hero)
+
+def capabilities_for_hero(hero: str) -> frozenset[str]:
+    if HERO_CAPABILITY_CHECKS:
+        return frozenset(HERO_CAPABILITY_CHECKS.get(hero, {CAP_WIN: WIN}))
+    return frozenset(
+        cap for cap, heroes in CAPABILITY_HEROES.items() if hero in heroes
+    )
+
+def check_key_for_hero_capability(hero: str, capability: str) -> str | None:
+    if HERO_CAPABILITY_CHECKS:
+        return HERO_CAPABILITY_CHECKS.get(hero, {}).get(capability)
+    keys = CAPABILITY_CHECK_KEYS.get(capability) or ()
+    return keys[0] if keys else None
+
+def validate_capability_tables() -> None:
+    for cap, heroes in CAPABILITY_HEROES.items():
+        bad = [h for h in heroes if h not in HERO_ROLES]
+        if bad:
+            raise ValueError(f"{cap} has unknown heroes: {bad}")
 
 PASS_KEYS: list[str] = ["tank", "bruiser", "support", "melee_assassin", "ranged_assassin"]
 
@@ -200,7 +225,6 @@ HERO_TO_YAML_KEY: dict[str, str] = {
 }
 YAML_KEY_TO_HERO: dict[str, str] = {v: k for k, v in HERO_TO_YAML_KEY.items()}
 
-
 def normalize_hero_yaml_key(key: str) -> str:
     if key in YAML_KEY_TO_HERO:
         return key
@@ -215,39 +239,31 @@ def normalize_hero_yaml_key(key: str) -> str:
             return yaml_key
     return key
 
-
 def yaml_key_to_hero(key: str) -> str | None:
     yaml_key = normalize_hero_yaml_key(key)
     return YAML_KEY_TO_HERO.get(yaml_key)
-
 
 def get_role(hero: str) -> str:
     """Check-role tag used for location check lists."""
     return HERO_ROLES[hero]
 
-
 def get_pass_key(hero: str) -> str:
     """Pass bucket used for unlock items."""
     return ROLE_TO_PASS[get_role(hero)]
-
 
 def heroes_in_pass(pass_key: str, heroes: list[str] | None = None) -> list[str]:
     """Heroes whose unlock/pass bucket matches pass_key."""
     pool = heroes if heroes is not None else ALL_HEROES
     return [hero for hero in pool if get_pass_key(hero) == pass_key]
 
-
 def pass_name_for_key(pass_key: str) -> str:
     return PASS_NAMES[pass_key]
-
 
 def pass_key_from_item_name(item_name: str) -> str | None:
     return ITEM_NAME_TO_PASS_KEY.get(item_name)
 
-
 def role_display(role: str) -> str:
     return ROLE_DISPLAY.get(role, role.replace("_", " ").title())
-
 
 def pass_contributor_hint(pass_key: str) -> str | None:
     """Short tracker note when multiple check-roles share one pass bucket."""
@@ -263,59 +279,62 @@ def pass_contributor_hint(pass_key: str) -> str | None:
     pluralized = [f"{label}s" if not label.endswith("s") else label for label in labels]
     return f"{' + '.join(pluralized)} count toward this pass"
 
+FORCED_CAPABILITIES: tuple[str, ...] = (CAP_WIN,)
+ROLLED_CAPABILITIES_PER_HERO = 5
 
-EASY_MODE_REMOVED: dict[str, frozenset[str]] = {
-    "tank": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_25K}),
-    "bruiser": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_50K}),
-    "healer": frozenset({LEVEL_20, TAKEDOWNS_10, HEALING_60K, ASSISTS_8}),
-    "support": frozenset({LEVEL_20, TAKEDOWNS_10, SIEGE_50K}),
-    "melee_assassin": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_50K, SOLO_KILL_3}),
-    "ranged_assassin": frozenset({LEVEL_20, TAKEDOWNS_15, HERO_50K, SIEGE_75K}),
-}
+def all_check_keys_for_hero(hero: str) -> list[str]:
+    caps = capabilities_for_hero(hero)
+    keys: list[str] = []
+    seen: set[str] = set()
+    for cap in ALL_CAPABILITIES:
+        if cap not in caps:
+            continue
+        key = check_key_for_hero_capability(hero, cap)
+        if key and key not in seen:
+            seen.add(key)
+            keys.append(key)
+    return keys
 
+def _order_check_keys(hero: str, keys: list[str] | set[str]) -> list[str]:
+    wanted = set(keys)
+    return [k for k in all_check_keys_for_hero(hero) if k in wanted]
 
-def active_role_checks(role: str, remove_hardest: bool = False) -> list[str]:
-    checks = ROLE_CHECKS[role]
-    if not remove_hardest:
-        return list(checks)
-    removed = EASY_MODE_REMOVED[role]
-    return [check for check in checks if check not in removed]
+def roll_checks_for_hero(
+    hero: str,
+    rng,
+    remove_level_20: bool = False,
+    rolled_count: int = ROLLED_CAPABILITIES_PER_HERO,
+) -> list[str]:
+    caps = set(capabilities_for_hero(hero))
+    if remove_level_20:
+        caps.discard(CAP_LEVEL_20)
 
+    forced_caps = [c for c in FORCED_CAPABILITIES if c in caps]
+    rollable_caps = [
+        c for c in ALL_CAPABILITIES
+        if c in caps and c not in forced_caps and check_key_for_hero_capability(hero, c)
+    ]
+    n = min(rolled_count, len(rollable_caps))
+    picked_caps = list(rng.sample(rollable_caps, n)) if n else []
 
-# Per-hero check lists when a role bucket is a poor fit.
-HERO_CHECK_OVERRIDES: dict[str, list[str]] = {}
+    keys: list[str] = []
+    for cap in (*forced_caps, *picked_caps):
+        key = check_key_for_hero_capability(hero, cap)
+        if key:
+            keys.append(key)
+    return _order_check_keys(hero, keys)
 
-
-def _base_checks_for_hero(hero: str) -> list[str]:
-    if hero in HERO_CHECK_OVERRIDES:
-        return list(HERO_CHECK_OVERRIDES[hero])
-    return list(ROLE_CHECKS[get_role(hero)])
-
-
-def checks_for_hero(hero: str, remove_hardest: bool = False) -> list[str]:
-    if hero in HERO_CHECK_OVERRIDES:
-        return list(HERO_CHECK_OVERRIDES[hero])
-    return active_role_checks(get_role(hero), remove_hardest)
-
-
-HERO_CHECKS: dict[str, list[str]] = {
-    hero: _base_checks_for_hero(hero)
-    for hero in ALL_HEROES
-}
-
+HERO_CHECKS: dict[str, list[str]] = {}
 
 def _normalize_hero_name(name: str) -> str:
     folded = unicodedata.normalize("NFKD", name)
     return "".join(c.lower() for c in folded if c.isalnum())
 
-
 def location_name(hero: str, check_key: str) -> str:
     return f"{hero}: {CHECK_DESCRIPTIONS[check_key]}"
 
-
 def pass_location_name(pass_key: str, check_key: str) -> str:
     return f"{pass_name_for_key(pass_key)}: {CHECK_DESCRIPTIONS[check_key]}"
-
 
 def pass_check_keys_for_seed(use_role_passes: bool, include_timed_win: bool) -> list[str]:
     if not use_role_passes:
@@ -324,7 +343,6 @@ def pass_check_keys_for_seed(use_role_passes: bool, include_timed_win: bool) -> 
     if include_timed_win:
         keys.append(TIMED_WIN_18)
     return keys
-
 
 def pass_location_names_for_seed(
     enabled_pass_keys: list[str],
@@ -337,7 +355,6 @@ def pass_location_names_for_seed(
         for check_key in pass_check_keys_for_seed(use_role_passes, include_timed_win)
     ]
 
-
 def hero_from_replay_name(replay_hero: str) -> str | None:
     """Resolve replay.details m_hero display name to a world hero."""
     if not replay_hero:
@@ -348,33 +365,113 @@ def hero_from_replay_name(replay_hero: str) -> str | None:
             return hero
     return None
 
+DAILY_QUEST_POOL_MIN = 5       # seed must include this many can_* heroes to roll the daily
+DAILY_QUEST_UNLOCK_MIN = 3     # this many capable heroes must be playable before the daily is in logic
+DAILY_QUEST_MAX = 3
 
-SINGLE_GAME_CHECKS = frozenset({WIN, LEVEL_20})
+DAILY_TAKEDOWNS_100 = "daily_takedowns_100"
+DAILY_REGEN_150 = "daily_regen_150"
+DAILY_HERO_DAMAGE_250K = "daily_hero_damage_250k"
+DAILY_SIEGE_300K = "daily_siege_300k"
+DAILY_HEALING_200K = "daily_healing_200k"
+DAILY_MINION_200 = "daily_minion_200"
+DAILY_MERC_10 = "daily_merc_10"
+DAILY_ASSISTS_40 = "daily_assists_40"
+DAILY_SOLO_15 = "daily_solo_15"
+DAILY_SELF_HEAL_80K = "daily_self_heal_80k"
+DAILY_PROTECT_20K = "daily_protect_20k"
+DAILY_STUN_120 = "daily_stun_120"
+DAILY_SILENCE_80 = "daily_silence_80"
+DAILY_QUESTS_COMPLETE = "daily_quests_complete"
 
-# Stat checks that can add up across games when cumulative_checks is enabled.
-CHECK_SCORE_THRESHOLDS: dict[str, tuple[str, int]] = {
-    TAKEDOWNS_1: ("Takedowns", 1),
-    TAKEDOWNS_5: ("Takedowns", 5),
-    TAKEDOWNS_10: ("Takedowns", 10),
-    TAKEDOWNS_15: ("Takedowns", 15),
-    HERO_25K: ("HeroDamage", 25_000),
-    HERO_40K: ("HeroDamage", 40_000),
-    HERO_50K: ("HeroDamage", 50_000),
-    SIEGE_50K: ("SiegeDamage", 50_000),
-    SIEGE_75K: ("SiegeDamage", 75_000),
-    SIEGE_100K: ("SiegeDamage", 100_000),
-    HEALING_40K: ("Healing", 40_000),
-    HEALING_60K: ("Healing", 60_000),
-    SOLO_KILL_1: ("SoloKill", 1),
-    SOLO_KILL_3: ("SoloKill", 3),
-    MINION_15: ("MinionKills", 15),
-    MINION_25: ("MinionKills", 25),
-    MINION_40: ("MinionKills", 40),
-    MINION_50: ("MinionKills", 50),
-    ASSISTS_8: ("Assists", 8),
-    MERC_2: ("MercCampCaptures", 2),
+DAILY_QUEST_DEFS: dict[str, tuple[str, str, int, str]] = {
+    DAILY_TAKEDOWNS_100: (CAP_TAKEDOWN, "Takedowns", 100, "Daily Quest: Achieve 100 takedowns"),
+    DAILY_REGEN_150: (CAP_REGEN_GLOBE, "RegenGlobes", 150, "Daily Quest: Collect 150 regen globes"),
+    DAILY_HERO_DAMAGE_250K: (CAP_HERO_DAMAGE, "HeroDamage", 250_000, "Daily Quest: Deal 250,000 hero damage"),
+    DAILY_SIEGE_300K: (CAP_SIEGE, "SiegeDamage", 300_000, "Daily Quest: Deal 300,000 siege damage"),
+    DAILY_HEALING_200K: (CAP_HEAL, "Healing", 200_000, "Daily Quest: Restore 200,000 health"),
+    DAILY_MINION_200: (CAP_MINION, "MinionKills", 200, "Daily Quest: Kill 200 minions"),
+    DAILY_MERC_10: (CAP_MERC, "MercCampCaptures", 10, "Daily Quest: Capture 10 mercenary camps"),
+    DAILY_ASSISTS_40: (CAP_ASSIST, "Assists", 40, "Daily Quest: Get 40 assists"),
+    DAILY_SOLO_15: (CAP_SOLO_KILL, "SoloKill", 15, "Daily Quest: Get 15 solo kills"),
+    DAILY_SELF_HEAL_80K: (CAP_SELF_HEAL, "SelfHealing", 80_000, "Daily Quest: Self-heal 80,000"),
+    DAILY_PROTECT_20K: (CAP_PROTECT, "ProtectionGivenToAllies", 20_000, "Daily Quest: Shield allies for 20,000"),
+    DAILY_STUN_120: (CAP_STUN, "TimeStunningEnemyHeroes", 120, "Daily Quest: Stun enemies for 120 seconds"),
+    DAILY_SILENCE_80: (CAP_SILENCE, "TimeSilencingEnemyHeroes", 80, "Daily Quest: Silence enemies for 80 seconds"),
 }
 
+DAILY_QUESTS_COMPLETE_NAME = "Daily Quest: Complete all daily quests"
+
+ALL_DAILY_QUEST_KEYS: tuple[str, ...] = tuple(DAILY_QUEST_DEFS.keys())
+
+DAILY_QUEST_UNLOCK_ITEMS: tuple[str, ...] = tuple(
+    f"Daily Quest Unlock {i}" for i in range(1, DAILY_QUEST_MAX + 1)
+)
+
+def daily_quest_location_name(quest_key: str) -> str:
+    if quest_key == DAILY_QUESTS_COMPLETE:
+        return DAILY_QUESTS_COMPLETE_NAME
+    return DAILY_QUEST_DEFS[quest_key][3]
+
+def daily_quest_item_name(slot: int) -> str:
+    """1-based unlock slot → item name (Daily Quest Unlock 1..3)."""
+    if slot < 1 or slot > DAILY_QUEST_MAX:
+        raise ValueError(f"Daily quest unlock slot out of range: {slot}")
+    return DAILY_QUEST_UNLOCK_ITEMS[slot - 1]
+
+def daily_quest_slot_from_item_name(name: str) -> int | None:
+    try:
+        idx = DAILY_QUEST_UNLOCK_ITEMS.index(name)
+    except ValueError:
+        return None
+    return idx + 1
+
+def capable_heroes_in_pool(capability: str, enabled_heroes: list[str] | set[str]) -> list[str]:
+    members = CAPABILITY_HEROES.get(capability, frozenset())
+    return sorted((h for h in enabled_heroes if h in members), key=hero_sort_key)
+
+def eligible_daily_quest_keys(enabled_heroes: list[str]) -> list[str]:
+    """Quest keys whose capability has enough heroes in the seed pool."""
+    out: list[str] = []
+    for key, (cap, _field, _thr, _title) in DAILY_QUEST_DEFS.items():
+        if len(capable_heroes_in_pool(cap, enabled_heroes)) >= DAILY_QUEST_POOL_MIN:
+            out.append(key)
+    return out
+
+def roll_daily_quests(
+    enabled_heroes: list[str],
+    rng,
+    starting_heroes: list[str] | None = None,
+) -> list[str]:
+    """Pick up to 3 dailies. Slot 1 prefers a quest at least one starter can earn."""
+    eligible = eligible_daily_quest_keys(enabled_heroes)
+    if not eligible:
+        return []
+    n = min(DAILY_QUEST_MAX, len(eligible))
+    starters = [h for h in (starting_heroes or []) if h in enabled_heroes]
+    starter_keys = [
+        key for key in eligible
+        if any(hero_has_capability(h, DAILY_QUEST_DEFS[key][0]) for h in starters)
+    ]
+    if starter_keys:
+        first = rng.choice(starter_keys)
+        remaining = [key for key in eligible if key != first]
+        extra = n - 1
+        rest = rng.sample(remaining, min(extra, len(remaining))) if extra and remaining else []
+        return [first, *rest]
+    return rng.sample(eligible, n)
+
+def _level_check_keys() -> frozenset[str]:
+    return frozenset(
+        key for key, (field, _thr) in CHECK_SCORE_THRESHOLDS.items()
+        if field == "Level"
+    )
+
+SINGLE_GAME_CHECKS = frozenset({WIN, LEVEL_20})  # refreshed after tier load
+
+CHECK_SCORE_THRESHOLDS: dict[str, tuple[str, int]] = {
+    LEVEL_20: ("Level", 20),
+}
 
 def score_fields_for_check_keys(check_keys: list[str]) -> set[str]:
     return {
@@ -383,10 +480,8 @@ def score_fields_for_check_keys(check_keys: list[str]) -> set[str]:
         if key in CHECK_SCORE_THRESHOLDS
     }
 
-
 def detect_instant_checks(score: dict, result: str, level_history: list | None = None) -> set[str]:
     return detect_checks(score, result, level_history) & SINGLE_GAME_CHECKS
-
 
 def detect_cumulative_checks(stat_totals: dict[str, int], check_keys: list[str]) -> set[str]:
     fired: set[str] = set()
@@ -398,18 +493,46 @@ def detect_cumulative_checks(stat_totals: dict[str, int], check_keys: list[str])
             fired.add(key)
     return fired
 
-
 def detect_checks(score: dict, result: str, level_history: list | None = None) -> set[str]:
     fired: set[str] = set()
     if result == "Win":
         fired.add(WIN)
 
     max_level = max(level_history or [0], default=0)
-    if max_level >= 20:
-        fired.add(LEVEL_20)
+    score_level = int(score.get("Level", 0) or 0)
+    best_level = max(max_level, score_level)
 
     for check_key, (field, threshold) in CHECK_SCORE_THRESHOLDS.items():
+        if field == "Level":
+            if best_level >= threshold:
+                fired.add(check_key)
+            continue
         if score.get(field, 0) >= threshold:
             fired.add(check_key)
 
     return fired
+
+def _load_hero_tiers() -> None:
+    global HERO_CHECKS, SINGLE_GAME_CHECKS
+    try:
+        from . import HeroTiers as _tiers
+    except ImportError:
+        _tiers = None
+
+    if _tiers is not None:
+        _apply_hero_tier_tables(
+            getattr(_tiers, "HERO_CAPABILITY_CHECKS", {}),
+            getattr(_tiers, "CHECK_DESCRIPTIONS", {}),
+            getattr(_tiers, "CHECK_THRESHOLDS", {}),
+        )
+    else:
+        for hero in ALL_HEROES:
+            HERO_CAPABILITY_CHECKS[hero] = {
+                CAP_WIN: WIN,
+                CAP_LEVEL_20: LEVEL_20,
+            }
+    validate_capability_tables()
+    HERO_CHECKS = {hero: all_check_keys_for_hero(hero) for hero in ALL_HEROES}
+    SINGLE_GAME_CHECKS = frozenset({WIN}) | _level_check_keys()
+
+_load_hero_tiers()

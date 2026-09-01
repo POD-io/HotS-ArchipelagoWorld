@@ -57,8 +57,11 @@ This reprocesses the newest .StormReplay in your configured folder(s) and sends 
 | Command               | Description                                   |
 | --------------------- | --------------------------------------------- |
 | `/hots`               | Unlocked heroes and open checks               |
+| `/heroes`             | Unlocked vs locked heroes                     |
 | `/goal`               | Goal mode and progress                        |
 | `/name YourBattleTag` | Set your HotS player name for replay matching |
 | `/rescan`             | Reprocess your latest replay manually         |
+| `/builds`             | Write talent checks to TalentBuilds.txt       |
+| `/stim`               | Use a Stimpack (also on the Loot tab)         |
 
 

@@ -1,5 +1,4 @@
 """Replay parsing for .StormReplay files."""
-from __future__ import annotations
 import os
 import re
 import sys
@@ -27,7 +26,7 @@ class ReplayResult:
     result: str
     score: dict = field(default_factory=dict)
     level_history: list = field(default_factory=list)
-    talent_choices: list = field(default_factory=list)
+    talent_picks: list = field(default_factory=list)
     pid: int = 0
 
 
@@ -145,19 +144,35 @@ def _extract_level_history(tracker_events: list) -> dict:
     return dict(levels)
 
 
-def _extract_talent_choices(tracker_events: list) -> dict:
-    choices: dict = {}
-    for event in tracker_events:
-        if event.get("_event") != "NNet.Replay.Tracker.SStatGameEvent":
+def _userid_by_toon(archive) -> dict[str, int]:
+    try:
+        init = protocol96477.decode_replay_initdata(archive.read_file("replay.initData"))
+    except Exception:
+        return {}
+    lobby = (init.get("m_syncLobbyState") or {}).get("m_lobbyState") or {}
+    mapping: dict[str, int] = {}
+    for slot in lobby.get("m_slots") or []:
+        user_id = slot.get("m_userId")
+        toon = normalize_toon_handle(_b(slot.get("m_toonHandle")))
+        if user_id is None or not toon:
             continue
-        if _b(event.get("m_eventName")) != "EndOfGameTalentChoices":
+        mapping[toon.lower()] = user_id
+    return mapping
+
+
+def _extract_talent_indices(game_events: list, user_id: int | None) -> list[int]:
+    if user_id is None:
+        return []
+    indices: list[int] = []
+    for event in game_events:
+        if event.get("_event") != "NNet.Game.SHeroTalentTreeSelectedEvent":
             continue
-        pid = _kv_int(event.get("m_intData"), "PlayerID")
-        if pid is None:
+        if event.get("_userid", {}).get("m_userId") != user_id:
             continue
-        tiers = [_kv_str(event.get("m_stringData"), f"Tier {i} Choice") or "" for i in range(1, 8)]
-        choices[pid] = tiers
-    return choices
+        index = event.get("m_index")
+        if isinstance(index, int):
+            indices.append(index)
+    return indices
 
 
 def find_player(
@@ -222,12 +237,12 @@ def parse_replay(
     map_name = _extract_map_name(tracker_events)
     score_by_pid = _extract_score(tracker_events)
     level_by_pid = _extract_level_history(tracker_events)
-    talent_by_pid = _extract_talent_choices(tracker_events)
 
+    target_toon = normalize_toon_handle(toon_handle)
     target_pid = find_player(
         players,
         names,
-        toon_handle=normalize_toon_handle(toon_handle),
+        toon_handle=target_toon,
         player_name=player_name,
         hero_name=hero_name,
         heroes=heroes_by_pid,
@@ -236,16 +251,35 @@ def parse_replay(
         return None
 
     p = players[target_pid]
+    result_toon = normalize_toon_handle(p.get("toon_handle") or target_toon) or ""
+    talent_picks: list[tuple[int, int]] = []
+    try:
+        game_events = list(protocol96477.decode_replay_game_events(
+            archive.read_file("replay.game.events")
+        ))
+        user_map = _userid_by_toon(archive)
+        user_id = user_map.get(result_toon.lower()) if result_toon else None
+        talent_indices = _extract_talent_indices(game_events, user_id)
+        from .Challenges import hero_from_replay_name
+        from .Talents import picks_from_indices
+
+        hero_display = heroes_by_pid.get(target_pid, "")
+        hero_key = hero_from_replay_name(hero_display) or hero_display
+        if hero_key and talent_indices:
+            talent_picks = picks_from_indices(hero_key, talent_indices)
+    except Exception:
+        talent_picks = []
+
     return ReplayResult(
         map_name=map_name,
         duration_seconds=duration_seconds,
         player_name=names.get(target_pid, f"Player {target_pid}"),
         hero=heroes_by_pid.get(target_pid, ""),
         hero_id=p.get("hero_id", ""),
-        toon_handle=p.get("toon_handle") or "",
+        toon_handle=result_toon,
         result=p.get("result") or "Unknown",
         score=score_by_pid.get(target_pid, {}),
         level_history=level_by_pid.get(target_pid, []),
-        talent_choices=talent_by_pid.get(target_pid, []),
+        talent_picks=talent_picks,
         pid=target_pid,
     )

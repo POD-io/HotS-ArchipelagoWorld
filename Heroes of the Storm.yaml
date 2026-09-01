@@ -34,7 +34,7 @@ game: Heroes of the Storm
 requires:
   version: 0.6.7 # Version of Archipelago required for this yaml to work as expected.
   game:
-    Heroes of the Storm: 0.3.0 # Version of the world required for this yaml to work as expected.
+    Heroes of the Storm: 0.6.0 # Version of the world required for this yaml to work as expected.
 
 Heroes of the Storm:
   ################
@@ -69,7 +69,8 @@ Heroes of the Storm:
   # Heroes #
   ##########
   enabled_heroes:
-    # Set each hero to 1 to enable them for use in this seed, or 0 to exclude them.
+    # Set a hero to 1 to include them. Omit this option to include every hero.
+    # If you list any heroes, only those set to 1 are included.
     Abathur: 1
     Alarak: 1
     Alexstrasza: 1
@@ -163,7 +164,6 @@ Heroes of the Storm:
 
   hero_pool_size:
     # Randomly include this many heroes from those set to 1 in Enabled Heroes.
-    # When Goal is specific_hero, the goal hero is always kept in the pool.
     # Set to 0 to include all your enabled_heroes.
     #
     # You can define additional values between the minimum and maximum values.
@@ -178,14 +178,12 @@ Heroes of the Storm:
   cumulative_checks:
     # When on, stat-based hero checks (damage, healing, takedowns, etc.) add up across
     # games with that hero. Win and reach level 20 still require a single match.
-    # Progress is stored on the Archipelago server per slot (like role pass XP).
-    'false': 50
-    'true': 0
+    'false': 0
+    'true': 50
 
-  remove_hardest_checks:
-    # When off, every role keeps all checks. When on, each role drops its hardest checks:
-    # highest takedown count, highest hero/heal/siege/damage tier, 8 assists (healers),
-    # 3 solo kills (melee assassins), and level 20.
+  remove_level_20_check:
+    # When on, the reach level 20 check is removed from every hero.
+    # Also excludes level 20 from random talent checks (if enabled).
     'false': 50
     'true': 0
 
@@ -193,117 +191,30 @@ Heroes of the Storm:
   # Victory #
   ###########
   goal:
-    # random_heroes: Complete all checks for N random enabled heroes.
-    # specific_hero: Complete all checks for one chosen hero.
-    # distinct_wins: Win one match each with N random enabled heroes.
-    random_heroes: 50
-    specific_hero: 0
+    # mastery: Complete every included check on the goal heroes.
+    # distinct_wins: Win one match with each goal hero.
+    # Goal Hero Count rolls that many from the seed. Goal Heroes adds chosen names in that set.
+    mastery: 50
     distinct_wins: 0
 
   goal_hero_count:
-    # Number of heroes used when Goal is random_heroes or distinct_wins.
+    # How many seed heroes are rolled for the goal. Chosen Goal Heroes are included
+    # first; leftover slots fill at random. 0 = entire seed if nobody is chosen,
+    # or only the chosen heroes if any are listed.
     #
     # You can define additional values between the minimum and maximum values.
-    # Minimum value is 1
-    # Maximum value is 20
+    # Minimum value is 0
+    # Maximum value is 90
     3: 50
     random: 0
     random-low: 0 # random value weighted towards lower values
     random-high: 0 # random value weighted towards higher values
-    random-range-1-20: 0 # random value between 1 and 20
+    random-range-0-90: 0 # random value between 0 and 90
 
-  goal_hero:
-    # Hero to complete when Goal is specific_hero.
-    abathur: 0
-    alarak: 50
-    alexstrasza: 0
-    ana: 0
-    anduin: 0
-    anubarak: 0
-    artanis: 0
-    arthas: 0
-    auriel: 0
-    azmodan: 0
-    blaze: 0
-    brightwing: 0
-    cassia: 0
-    chen: 0
-    cho: 0
-    chromie: 0
-    dva: 0
-    deathwing: 0
-    deckard: 0
-    dehaka: 0
-    diablo: 0
-    etc: 0
-    falstad: 0
-    fenix: 0
-    gall: 0
-    garrosh: 0
-    gazlowe: 0
-    genji: 0
-    greymane: 0
-    guldan: 0
-    hanzo: 0
-    hogger: 0
-    illidan: 0
-    imperius: 0
-    jaina: 0
-    johanna: 0
-    junkrat: 0
-    kaelthas: 0
-    kelthuzad: 0
-    kerrigan: 0
-    kharazim: 0
-    leoric: 0
-    lili: 0
-    liming: 0
-    ltmorales: 0
-    lucio: 0
-    lunara: 0
-    maiev: 0
-    malganis: 0
-    malfurion: 0
-    malthael: 0
-    medivh: 0
-    mei: 0
-    mephisto: 0
-    muradin: 0
-    murky: 0
-    nazeebo: 0
-    nova: 0
-    orphea: 0
-    probius: 0
-    qhira: 0
-    ragnaros: 0
-    raynor: 0
-    rehgar: 0
-    rexxar: 0
-    samuro: 0
-    sgthammer: 0
-    sonya: 0
-    stitches: 0
-    stukov: 0
-    sylvanas: 0
-    tassadar: 0
-    thebutcher: 0
-    thelostvikings: 0
-    thrall: 0
-    tracer: 0
-    tychus: 0
-    tyrael: 0
-    tyrande: 0
-    uther: 0
-    valeera: 0
-    valla: 0
-    varian: 0
-    whitemane: 0
-    xul: 0
-    yrel: 0
-    zagara: 0
-    zarya: 0
-    zeratul: 0
-    zuljin: 0
+  goal_heroes:
+    # Optional named heroes forced into the goal. Leave empty to use only Goal Hero Count.
+    # Listed heroes must be enabled and stay in the pool.
+    []
 
   #################
   # Unlock System #
@@ -320,7 +231,7 @@ Heroes of the Storm:
     # You can define additional values between the minimum and maximum values.
     # Minimum value is 0
     # Maximum value is 4
-    0: 50
+    1: 50
     random: 0
     random-low: 0 # random value weighted towards lower values
     random-high: 0 # random value weighted towards higher values
@@ -331,6 +242,47 @@ Heroes of the Storm:
     # Any currently unlocked hero in that pass can achieve the check.
     'false': 50
     'true': 0
+
+  ##########
+  # Quests #
+  ##########
+  daily_quests:
+    # When on, roll up to 3 cumulative daily quests from check families that have
+    # at least 5 matching heroes in the pool. Examples: Collect 150 regen globes,
+    # Kill 200 minions, Restore 200,000 health, etc..
+    'false': 0
+    'true': 50
+
+  ###########
+  # Talents #
+  ###########
+  random_talents_per_hero:
+    # How many random talent slots are forced on each selected hero.
+    # 0 disables random talent checks. Each matching slot on a win is its own check.
+    # See the Talents tab for which slots to pick.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 7
+    0: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-7: 0 # random value between 0 and 7
+
+  random_talent_hero_count:
+    # How many heroes in the seed receive random talent assignments.
+    # Capped at the number of heroes in the seed. Heroes are chosen at random.
+    # 0 disables random talent checks (even if Random Talents Per Hero is above 0).
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 90
+    0: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-90: 0 # random value between 0 and 90
 
   ###########################
   # Item & Location Options #
