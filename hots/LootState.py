@@ -320,11 +320,11 @@ class LootState:
             newly = affordable - self._announced_buyable
             if newly == 1:
                 logger.info(
-                    "[HotS] Loot chests available - (1) (buy in the Loot tab)."
+                    "Loot chests available - (1) (buy in the Loot tab)."
                 )
             else:
                 logger.info(
-                    f"[HotS] Loot chests available - ({newly}) (buy in the Loot tab)."
+                    f"Loot chests available - ({newly}) (buy in the Loot tab)."
                 )
             self._announced_buyable = affordable
 

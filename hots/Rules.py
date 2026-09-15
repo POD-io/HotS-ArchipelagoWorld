@@ -8,7 +8,8 @@ from .Challenges import (
 )
 from .Items import (
     CHEST_COST_XP, SHARDS_TO_UNLOCK, XP_VALUES, daily_quest_items,
-    is_open_currency_item, shard_item_name,
+    is_hero_wave_item, is_open_currency_item, shard_item_name,
+    PROGRESSIVE_HERO_WAVE_NAME,
 )
 from .Locations import chest_location_name, location_table
 
@@ -18,9 +19,14 @@ def hero_unlocked_in_state(
     hero: str,
     player: int,
     shards_needed: int = SHARDS_TO_UNLOCK,
+    wave_need: int = 0,
 ) -> bool:
+    if wave_need > 0:
+        return state.count(PROGRESSIVE_HERO_WAVE_NAME, player) >= wave_need
     if state.has(hero, player):
         return True
+    if shards_needed <= 0:
+        return False
     return state.count(shard_item_name(hero), player) >= shards_needed
 
 
@@ -30,8 +36,9 @@ def hero_playable_in_state(
     player: int,
     shards_needed: int = SHARDS_TO_UNLOCK,
     use_role_passes: bool = False,
+    wave_need: int = 0,
 ) -> bool:
-    if not hero_unlocked_in_state(state, hero, player, shards_needed):
+    if not hero_unlocked_in_state(state, hero, player, shards_needed, wave_need=wave_need):
         return False
     if use_role_passes and not state.has(pass_name_for_key(get_pass_key(hero)), player):
         return False
@@ -44,10 +51,14 @@ def daily_quest_capable_playable_count(
     player: int,
     shards_needed: int,
     use_role_passes: bool,
+    hero_wave_need: dict[str, int] | None = None,
 ) -> int:
+    mapping = hero_wave_need or {}
     return sum(
         1 for h in heroes
-        if hero_playable_in_state(state, h, player, shards_needed, use_role_passes)
+        if hero_playable_in_state(
+            state, h, player, shards_needed, use_role_passes, wave_need=mapping.get(h, 0),
+        )
     )
 
 
@@ -72,9 +83,12 @@ def set_rules(
     shards_to_unlock: int = SHARDS_TO_UNLOCK,
     daily_quest_keys: list[str] | None = None,
     starting_heroes: list[str] | None = None,
+    hero_wave_need: dict[str, int] | None = None,
 ) -> None:
+    wave_need = hero_wave_need or {}
     for hero in enabled_heroes:
         pass_needed = pass_name_for_key(get_pass_key(hero))
+        need_waves = wave_need.get(hero, 0)
         for check_key in hero_checks.get(hero, []):
             loc_name = location_name(hero, check_key)
             try:
@@ -83,12 +97,12 @@ def set_rules(
                 continue
 
             if use_role_passes:
-                loc.access_rule = lambda state, h=hero, pass_item=pass_needed, pid=player, need=shards_to_unlock: (
-                    hero_unlocked_in_state(state, h, pid, need) and state.has(pass_item, pid)
+                loc.access_rule = lambda state, h=hero, pass_item=pass_needed, pid=player, need=shards_to_unlock, wn=need_waves: (
+                    hero_unlocked_in_state(state, h, pid, need, wave_need=wn) and state.has(pass_item, pid)
                 )
             else:
-                loc.access_rule = lambda state, h=hero, pid=player, need=shards_to_unlock: (
-                    hero_unlocked_in_state(state, h, pid, need)
+                loc.access_rule = lambda state, h=hero, pid=player, need=shards_to_unlock, wn=need_waves: (
+                    hero_unlocked_in_state(state, h, pid, need, wave_need=wn)
                 )
 
             _add_hero_host_item_rules(loc, hero, hero_rank, use_role_passes)
@@ -103,7 +117,7 @@ def set_rules(
     if talent_location_names:
         set_talent_rules(
             multiworld, player, use_role_passes, hero_rank, talent_location_names,
-            shards_to_unlock, starting_heroes=starting_heroes,
+            shards_to_unlock, starting_heroes=starting_heroes, hero_wave_need=wave_need,
         )
 
     if loot_chest_count > 0:
@@ -112,13 +126,18 @@ def set_rules(
     if daily_quest_keys:
         set_daily_quest_rules(
             multiworld, player, enabled_heroes, daily_quest_keys, shards_to_unlock,
-            use_role_passes=use_role_passes,
+            use_role_passes=use_role_passes, hero_wave_need=wave_need,
         )
 
 
 def _add_hero_host_item_rules(loc, host: str, hero_rank: dict[str, int], use_role_passes: bool) -> None:
     def unlock_item_rule(item, host_hero=host, ranks=hero_rank) -> bool:
         name = item.name
+        if is_hero_wave_item(name):
+            host_wave = ranks.get(host_hero)
+            if host_wave is None:
+                return False
+            return True
         if name in ALL_HEROES:
             if host_hero not in ranks or name not in ranks:
                 return False
@@ -158,8 +177,10 @@ def set_talent_rules(
     talent_location_names: list[str],
     shards_to_unlock: int = SHARDS_TO_UNLOCK,
     starting_heroes: list[str] | None = None,
+    hero_wave_need: dict[str, int] | None = None,
 ) -> None:
     starters = set(starting_heroes or [])
+    wave_need = hero_wave_need or {}
     for loc_name in talent_location_names:
         data = location_table.get(loc_name)
         if not data or not data.hero:
@@ -171,13 +192,14 @@ def set_talent_rules(
             continue
 
         pass_needed = pass_name_for_key(get_pass_key(hero))
+        need_waves = wave_need.get(hero, 0)
         if use_role_passes:
-            loc.access_rule = lambda state, h=hero, pass_item=pass_needed, pid=player, need=shards_to_unlock: (
-                hero_unlocked_in_state(state, h, pid, need) and state.has(pass_item, pid)
+            loc.access_rule = lambda state, h=hero, pass_item=pass_needed, pid=player, need=shards_to_unlock, wn=need_waves: (
+                hero_unlocked_in_state(state, h, pid, need, wave_need=wn) and state.has(pass_item, pid)
             )
         else:
-            loc.access_rule = lambda state, h=hero, pid=player, need=shards_to_unlock: (
-                hero_unlocked_in_state(state, h, pid, need)
+            loc.access_rule = lambda state, h=hero, pid=player, need=shards_to_unlock, wn=need_waves: (
+                hero_unlocked_in_state(state, h, pid, need, wave_need=wn)
             )
 
         _add_hero_host_item_rules(loc, hero, hero_rank, use_role_passes)
@@ -249,9 +271,11 @@ def set_daily_quest_rules(
     daily_quest_keys: list[str],
     shards_to_unlock: int = SHARDS_TO_UNLOCK,
     use_role_passes: bool = False,
+    hero_wave_need: dict[str, int] | None = None,
 ) -> None:
     """Quest location needs Daily Quest Unlock N and DAILY_QUEST_UNLOCK_MIN playable capable heroes."""
     quest_loc_names: list[str] = []
+    wave_need = hero_wave_need or {}
     for slot, quest_key in enumerate(daily_quest_keys, start=1):
         cap, _field, _thr, _title = DAILY_QUEST_DEFS[quest_key]
         heroes = capable_heroes_in_pool(cap, enabled_heroes)
@@ -262,9 +286,9 @@ def set_daily_quest_rules(
             loc = multiworld.get_location(loc_name, player)
         except KeyError:
             continue
-        loc.access_rule = lambda state, hs=heroes, pid=player, need=shards_to_unlock, item=unlock_item, passes=use_role_passes: (
+        loc.access_rule = lambda state, hs=heroes, pid=player, need=shards_to_unlock, item=unlock_item, passes=use_role_passes, waves=wave_need: (
             state.has(item, pid)
-            and daily_quest_capable_playable_count(state, hs, pid, need, passes)
+            and daily_quest_capable_playable_count(state, hs, pid, need, passes, waves)
             >= DAILY_QUEST_UNLOCK_MIN
         )
         _forbid_daily_quest_items_on_loc(loc)
@@ -298,3 +322,10 @@ def set_chest_rules(multiworld: MultiWorld, player: int, loot_chest_count: int) 
                 return not is_open_currency_item(item.name)
 
             add_item_rule(loc, no_currency_in_chests)
+
+            def no_own_hero_waves(item, pid=player) -> bool:
+                if item.player != pid:
+                    return True
+                return not is_hero_wave_item(item.name)
+
+            add_item_rule(loc, no_own_hero_waves)

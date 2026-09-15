@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from Options import (
-    OptionCounter, OptionSet, Choice, Range, DefaultOnToggle,
+    OptionCounter, OptionSet, OptionList, Choice, Range, Toggle, DefaultOnToggle,
     PerGameCommonOptions, OptionGroup, OptionError,
 )
 from .Challenges import (
@@ -114,8 +114,43 @@ class GoalHeroes(OptionSet):
                 )
 
 
+class PartyMode(Toggle):
+    """
+    When enabled, builds the seed for a group. Heroes unlock in waves (Progressive Hero Wave).
+    Role Passes, Extra Starting Heroes, and Shards are ignored.
+
+    Use this option if you have a group of players that want to play the multiworld together.
+    """
+    display_name = "Party Mode"
+    default = 0
+
+
+class PartySize(Range):
+    """
+    Party Mode only. How many players the seed is built for (2–5).
+    Each wave unlocks this many heroes together.
+    """
+    display_name = "Party Size"
+    range_start = 2
+    range_end = 5
+    default = 2
+
+
+class StartingWaves(Range):
+    """
+    Party Mode only. How many hero waves start already unlocked.
+    1 = one hero per party size. 2–3 grants that many unlocked waves.
+
+    Example: Party Size:3 + Starting Waves:2 will give 6 heroes at the start.
+    """
+    display_name = "Starting Waves"
+    range_start = 1
+    range_end = 3
+    default = 1
+
+
 class RolePasses(DefaultOnToggle):
-    """When on, each hero needs its unlock item and a role pass (Tank, Bruiser, Support, Melee Assassin, or Ranged Assassin). Healers and utility supports use Support Pass."""
+    """When on, each hero needs its unlock item and a role pass (Tank, Bruiser, Support, Melee Assassin, or Ranged Assassin). Healers and utility supports use Support Pass. Ignored when Party Mode is on."""
     display_name = "Role Passes"
 
 
@@ -123,11 +158,25 @@ class ExtraStartingHeroes(Range):
     """
     Random extra heroes unlocked at start with the starting hero. All extras share one role
     pass when Role Passes is on. Up to 4 extras (5 starting heroes total).
+    Ignored when Party Mode is on (use Starting Waves).
     """
     display_name = "Extra Starting Heroes"
     range_start = 0
     range_end = 4
     default = 1
+
+
+class ShardsPerHero(Range):
+    """
+    How many shards it takes to unlock a hero.
+    0 = no shards; every hero is a single unlock item.
+    1-5 = total shards spread across the multiworld needed to unlock each hero.
+    Ignored when Party Mode is on.
+    """
+    display_name = "Shards Per Hero"
+    range_start = 0
+    range_end = 5
+    default = 5
 
 
 class HeroPoolSize(Range):
@@ -171,7 +220,7 @@ class IncludeTimedWinCheck(DefaultOnToggle):
 class RandomTalentsPerHero(Range):
     """
     How many random talent slots are forced on each selected hero.
-    0 disables random talent checks. Each matching slot on a win is its own check.
+    0 disables random talent checks. Each matching slot is its own check.
     See the Talents tab for which slots to pick.
     """
     display_name = "Random Talents Per Hero"
@@ -202,27 +251,73 @@ class DailyQuests(DefaultOnToggle):
     default = 1
 
 
+class CreditMode(Choice):
+    """
+    Who gets credit from a replay.
+
+    me: Only your /name.
+    team: Unlocked heroes on your team. Empty Credit Names = whole team.
+    match: Unlocked heroes in the game. Empty Credit Names = everyone.
+
+    """
+    display_name = "Credit Mode"
+    option_me = 0
+    option_team = 1
+    option_match = 2
+    default = 0
+
+
+class CreditNames(OptionList):
+    """
+    Use this option to filter specific players when Credit Mode is team or match.
+    Leave empty to credit everyone that mode allows. Your entire team or match.
+    Listing names means ONLY those players get credit (include yourself if you want your row).
+
+    Use the scoreboard / replay name (usually BattleTag without #1234).
+    """
+    display_name = "Credit Names"
+    default = []
+
+
+class IncludeAI(Toggle):
+    """
+    Also credit computer players allowed by Credit Mode.
+    """
+    display_name = "Include AI"
+    default = 0
+
+
 @dataclass
 class HoTSOptions(PerGameCommonOptions):
     enabled_heroes: EnabledHeroes
     hero_pool_size: HeroPoolSize
-    cumulative_checks: CumulativeChecks
-    remove_level_20_check: RemoveLevel20Check
     goal: GoalMode
     goal_hero_count: GoalHeroCount
     goal_heroes: GoalHeroes
+    party_mode: PartyMode
+    party_size: PartySize
+    starting_waves: StartingWaves
     role_passes: RolePasses
     extra_starting_heroes: ExtraStartingHeroes
+    shards_per_hero: ShardsPerHero
     include_timed_win_check: IncludeTimedWinCheck
+    cumulative_checks: CumulativeChecks
+    remove_level_20_check: RemoveLevel20Check
     random_talents_per_hero: RandomTalentsPerHero
     random_talent_hero_count: RandomTalentHeroCount
     daily_quests: DailyQuests
+    credit_mode: CreditMode
+    credit_names: CreditNames
+    include_ai: IncludeAI
 
 
 hots_option_groups = [
-    OptionGroup("Heroes", [EnabledHeroes, HeroPoolSize, CumulativeChecks, RemoveLevel20Check]),
+    OptionGroup("Heroes", [EnabledHeroes, HeroPoolSize]),
     OptionGroup("Victory", [GoalMode, GoalHeroCount, GoalHeroes]),
-    OptionGroup("Unlock System", [RolePasses, ExtraStartingHeroes, IncludeTimedWinCheck]),
-    OptionGroup("Quests", [DailyQuests]),
+    OptionGroup("Party Mode", [PartyMode, PartySize, StartingWaves]),
+    OptionGroup("Unlock System", [RolePasses, ExtraStartingHeroes, ShardsPerHero, IncludeTimedWinCheck]),
+    OptionGroup("Checks", [CumulativeChecks, RemoveLevel20Check]),
     OptionGroup("Talents", [RandomTalentsPerHero, RandomTalentHeroCount]),
+    OptionGroup("Quests", [DailyQuests]),
+    OptionGroup("Replay Scoring", [CreditMode, CreditNames, IncludeAI]),
 ]

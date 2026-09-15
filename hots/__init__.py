@@ -3,9 +3,10 @@ from Options import OptionError
 from worlds.AutoWorld import World, WebWorld
 from BaseClasses import Region, Item, ItemClassification
 from .Challenges import (
-    ALL_HEROES, HERO_CHECKS, WIN, roll_checks_for_hero, get_pass_key, hero_sort_key,
-    location_name, CHECK_DESCRIPTIONS, pass_key_from_item_name, pass_name_for_key,
-    pass_location_name, pass_check_keys_for_seed, pass_location_names_for_seed,
+    ALL_HEROES, HERO_CHECKS, WIN, roll_checks_for_hero, get_pass_key, get_role,
+    hero_sort_key, location_name, CHECK_DESCRIPTIONS, pass_key_from_item_name,
+    pass_name_for_key, pass_location_name, pass_check_keys_for_seed,
+    pass_location_names_for_seed, role_display,
     PASS_KEYS, PASS_XP_CHECKS, PASS_TIMED_WIN_CHECKS,
     PASS_XP_THRESHOLDS, TIMED_WIN_MAX_SECONDS,
     DAILY_QUESTS_COMPLETE, DAILY_QUEST_DEFS, daily_quest_item_name,
@@ -15,13 +16,15 @@ from .Items import (
     item_table, FILLER_ITEM_NAME, hero_unlock_items, role_pass_items, hero_shard_items,
     daily_quest_items, consumable_items,
     SHARDS_TO_UNLOCK, HEROES_PER_LOOT_CHEST, CHEST_COST_XP, CHEST_SLOTS, CHEST_NON_FILLER_SLOTS,
-    MAX_LOOT_CHESTS, EXTRA_XP_PERCENT,
+    MAX_LOOT_CHESTS, EXTRA_XP_PERCENT, MAX_HERO_WAVE, PROGRESSIVE_HERO_WAVE_NAME,
     XP_100_NAME, XP_200_NAME, XP_500_NAME, LOOT_CHEST_NAME, STIMPACK_NAME, TALENT_TOME_NAME,
-    shard_item_name, is_open_currency_item,
+    shard_item_name, is_open_currency_item, hero_wave_items, is_hero_wave_item,
+    progressive_waves_needed,
     stimpack_count_for_seed, talent_tome_count_for_seed,
 )
 from .Locations import location_table, HoTSLocation, locations_by_hero, chest_location_name
 from .Options import HoTSOptions, hots_option_groups
+from .ReplayParser import normalize_credit_mode
 from .Rules import set_rules
 from .Talents import (
     TALENT_LEVELS, choose_talent_rank, talent_counts_for_hero,
@@ -73,6 +76,13 @@ class HoTSWebWorld(WebWorld):
         },
         daily_quest_location_name(DAILY_QUESTS_COMPLETE): "Complete every daily quest in this seed",
     }
+    item_descriptions = {
+        PROGRESSIVE_HERO_WAVE_NAME: (
+            "Unlocks the next party hero wave (a full stack of mixed-role heroes). "
+            "Each copy advances one wave in the seed's generated order. "
+            "See the Unlocks tab for which heroes are in each wave."
+        ),
+    }
 
 
 class HoTSWorld(World):
@@ -94,6 +104,7 @@ class HoTSWorld(World):
         "Loot": {LOOT_CHEST_NAME},
         "Daily Quest Unlock": set(daily_quest_items),
         "Consumable": set(consumable_items),
+        "Hero Wave": set(hero_wave_items),
     }
 
     hero_rank: dict[str, int]
@@ -102,34 +113,73 @@ class HoTSWorld(World):
     hero_talent_requirements: dict[str, list[dict[str, int]]]
     talent_location_names: list[str]
     talent_assigned_heroes: list[str]
+    hero_waves: list[list[str]]
+    party_mode: bool = False
+    credit_mode: str = "me"
 
     MAX_STARTING_HEROES = 5
+    ut_can_gen_without_yaml = True
+    WAVE_ROLE_ORDER: ClassVar[tuple[str, ...]] = (
+        "tank", "healer", "bruiser", "ranged_assassin", "melee_assassin", "support",
+    )
+
+    def interpret_slot_data(self, slot_data: dict[str, Any]) -> dict[str, Any] | None:
+        """Return rolled seed picks so a regen (Universal Tracker) uses the same lists."""
+        out: dict[str, Any] = {}
+        for key in (
+            "enabled_heroes", "hero_checks", "goal_mode", "goal_heroes",
+            "goal_location_names", "role_passes", "starting_hero", "starting_heroes",
+            "starting_role_pass", "enabled_pass_keys", "pass_check_keys",
+            "pass_location_names", "include_timed_win_check",
+            "random_talents_per_hero", "random_talent_hero_count",
+            "talent_assigned_heroes", "hero_talent_requirements", "talent_location_names",
+            "loot_chest_count", "shards_to_unlock", "full_unlock_heroes", "shard_heroes",
+            "daily_quest_keys", "stimpack_count", "talent_tome_count",
+            "party_mode", "credit_mode", "credit_names",
+            "include_ai", "party_size", "starting_waves", "hero_waves", "hero_wave_need",
+        ):
+            if key not in slot_data:
+                continue
+            value = slot_data[key]
+            if isinstance(value, list):
+                out[key] = list(value)
+            elif isinstance(value, dict):
+                out[key] = dict(value)
+            else:
+                out[key] = value
+        return out or None
 
     def generate_early(self) -> None:
+        passthrough = getattr(self.multiworld, "re_gen_passthrough", None)
+        pt = None
+        if isinstance(passthrough, dict):
+            pt = passthrough.get(self.game) or passthrough.get(getattr(self, "game", ""))
+
         hero_pool = self.options.enabled_heroes.enabled_display_names()
         pool_size = self.options.hero_pool_size.value
-
         pinned_goal = self.options.goal_heroes.pinned_display_names()
-        for hero in pinned_goal:
-            if hero not in hero_pool:
-                raise OptionError(
-                    f"Goal hero ({hero}) must be set to 1 in Enabled Heroes."
-                )
-
         inventory_heroes = {
             k for k, v in self.options.start_inventory.value.items()
             if v > 0 and k in ALL_HEROES
         }
-        for hero in inventory_heroes:
-            if hero not in hero_pool:
-                raise OptionError(
-                    f"start_inventory hero {hero} must be set to 1 in Enabled Heroes."
-                )
-
         must_include = set(inventory_heroes)
         must_include.update(pinned_goal)
 
-        if pool_size > 0:
+        if not (pt and pt.get("enabled_heroes")):
+            for hero in pinned_goal:
+                if hero not in hero_pool:
+                    raise OptionError(
+                        f"Goal hero ({hero}) must be set to 1 in Enabled Heroes."
+                    )
+            for hero in inventory_heroes:
+                if hero not in hero_pool:
+                    raise OptionError(
+                        f"start_inventory hero {hero} must be set to 1 in Enabled Heroes."
+                    )
+
+        if pt and pt.get("enabled_heroes"):
+            self.enabled_heroes = list(pt["enabled_heroes"])
+        elif pool_size > 0:
             pool_size = min(pool_size, len(hero_pool))
             if len(must_include) > pool_size:
                 raise OptionError(
@@ -145,13 +195,18 @@ class HoTSWorld(World):
             self.enabled_heroes = sorted(hero_pool, key=hero_sort_key)
 
         remove_level_20 = bool(self.options.remove_level_20_check.value)
-        self.hero_checks = {
-            hero: roll_checks_for_hero(hero, self.random, remove_level_20)
-            for hero in self.enabled_heroes
-        }
+        if pt and pt.get("hero_checks"):
+            self.hero_checks = {hero: list(keys) for hero, keys in pt["hero_checks"].items()}
+        else:
+            self.hero_checks = {
+                hero: roll_checks_for_hero(hero, self.random, remove_level_20)
+                for hero in self.enabled_heroes
+            }
 
         count = int(self.options.goal_hero_count.value)
-        if pinned_goal:
+        if pt and pt.get("goal_heroes") is not None:
+            self.goal_heroes = list(pt["goal_heroes"])
+        elif pinned_goal:
             extra_needed = max(0, count - len(pinned_goal)) if count > 0 else 0
             others = [h for h in self.enabled_heroes if h not in pinned_goal]
             extra = self.random.sample(others, min(extra_needed, len(others))) if extra_needed else []
@@ -164,7 +219,7 @@ class HoTSWorld(World):
                 key=hero_sort_key,
             )
 
-        goal_mode = self.options.goal.current_key
+        goal_mode = pt.get("goal_mode") if pt and pt.get("goal_mode") else self.options.goal.current_key
         if goal_mode == "mastery":
             self.goal_check_keys: list[str] | None = None
         elif goal_mode == "distinct_wins":
@@ -172,45 +227,107 @@ class HoTSWorld(World):
         else:
             raise Exception(f"Unknown goal mode: {goal_mode}")
         self.goal_mode = goal_mode
-        self.use_role_passes = bool(self.options.role_passes.value)
-        self.include_timed_win_check = (
-            self.use_role_passes and bool(self.options.include_timed_win_check.value)
-        )
-        self.enabled_pass_keys = sorted({get_pass_key(h) for h in self.enabled_heroes})
-        self.pass_check_keys = pass_check_keys_for_seed(
-            self.use_role_passes, self.include_timed_win_check,
-        )
-        self.pass_location_names = pass_location_names_for_seed(
-            self.enabled_pass_keys, self.use_role_passes, self.include_timed_win_check,
-        )
-        self.random_talents_per_hero = int(self.options.random_talents_per_hero.value)
-        self.random_talent_hero_count = int(self.options.random_talent_hero_count.value)
-        self.placed_stimpacks = 0
-        self.placed_talent_tomes = 0
-        self.shards_to_unlock = SHARDS_TO_UNLOCK
-        self.hero_talent_requirements = {}
-        self.talent_location_names = []
-        self.talent_assigned_heroes: list[str] = []
-        if self.random_talents_per_hero > 0 and self.random_talent_hero_count > 0:
-            self._roll_talent_requirements()
-        self._pick_starting_heroes()
-        self._roll_full_unlock_heroes()
-        self._roll_loot_chest_count()
-        self._build_hero_ranks()
-        self.daily_quest_keys: list[str] = []
-        self.daily_quest_location_names: list[str] = []
-        if bool(self.options.daily_quests.value):
-            self.daily_quest_keys = roll_daily_quests(
-                self.enabled_heroes, self.random, self.starting_heroes,
+        self._apply_party_and_credit_options(pt)
+        if pt and "role_passes" in pt:
+            self.use_role_passes = bool(pt["role_passes"])
+        else:
+            self.use_role_passes = bool(self.options.role_passes.value)
+        if pt and "include_timed_win_check" in pt:
+            self.include_timed_win_check = bool(pt["include_timed_win_check"])
+        else:
+            self.include_timed_win_check = (
+                self.use_role_passes and bool(self.options.include_timed_win_check.value)
             )
-            self.daily_quest_location_names = [
-                daily_quest_location_name(key) for key in self.daily_quest_keys
-            ]
-            if self.daily_quest_keys:
-                self.daily_quest_location_names.append(
-                    daily_quest_location_name(DAILY_QUESTS_COMPLETE)
+        if self.party_mode:
+            self.use_role_passes = False
+            self.include_timed_win_check = False
+            self.shards_to_unlock = 0
+            self.options.role_passes.value = 0
+            self.options.include_timed_win_check.value = 0
+            self.options.extra_starting_heroes.value = 0
+            self.options.shards_per_hero.value = 0
+        if pt and pt.get("enabled_pass_keys") is not None:
+            self.enabled_pass_keys = list(pt["enabled_pass_keys"])
+        else:
+            self.enabled_pass_keys = sorted({get_pass_key(h) for h in self.enabled_heroes})
+        if pt and pt.get("pass_check_keys") is not None:
+            self.pass_check_keys = list(pt["pass_check_keys"])
+        else:
+            self.pass_check_keys = pass_check_keys_for_seed(
+                self.use_role_passes, self.include_timed_win_check,
+            )
+        if pt and pt.get("pass_location_names") is not None:
+            self.pass_location_names = list(pt["pass_location_names"])
+        else:
+            self.pass_location_names = pass_location_names_for_seed(
+                self.enabled_pass_keys, self.use_role_passes, self.include_timed_win_check,
+            )
+        if pt and "random_talents_per_hero" in pt:
+            self.random_talents_per_hero = int(pt.get("random_talents_per_hero") or 0)
+        else:
+            self.random_talents_per_hero = int(self.options.random_talents_per_hero.value)
+        if pt and "random_talent_hero_count" in pt:
+            self.random_talent_hero_count = int(pt.get("random_talent_hero_count") or 0)
+        else:
+            self.random_talent_hero_count = int(self.options.random_talent_hero_count.value)
+        self.placed_stimpacks = int((pt or {}).get("stimpack_count") or 0)
+        self.placed_talent_tomes = int((pt or {}).get("talent_tome_count") or 0)
+        if pt and "shards_to_unlock" in pt:
+            self.shards_to_unlock = int(pt.get("shards_to_unlock") or 0)
+        else:
+            self.shards_to_unlock = int(self.options.shards_per_hero.value)
+        if self.party_mode:
+            self.shards_to_unlock = 0
+        if pt and "hero_talent_requirements" in pt:
+            self.hero_talent_requirements = dict(pt.get("hero_talent_requirements") or {})
+            self.talent_location_names = list(pt.get("talent_location_names") or [])
+            self.talent_assigned_heroes = list(pt.get("talent_assigned_heroes") or [])
+        else:
+            self.hero_talent_requirements = {}
+            self.talent_location_names = []
+            self.talent_assigned_heroes: list[str] = []
+            if self.random_talents_per_hero > 0 and self.random_talent_hero_count > 0:
+                self._roll_talent_requirements()
+        if pt and pt.get("starting_heroes") is not None:
+            self.starting_heroes = list(pt["starting_heroes"])
+            self.starting_hero = pt.get("starting_hero") or (
+                self.starting_heroes[0] if self.starting_heroes else None
+            )
+            self.starting_role_pass = pt.get("starting_role_pass")
+            self.hero_waves = [list(wave) for wave in (pt.get("hero_waves") or [])]
+        else:
+            self._pick_starting_heroes()
+        if pt and ("full_unlock_heroes" in pt or "shard_heroes" in pt):
+            self.full_unlock_heroes = list(pt.get("full_unlock_heroes") or [])
+            self.shard_heroes = list(pt.get("shard_heroes") or [])
+        else:
+            self._roll_full_unlock_heroes()
+        if pt and "loot_chest_count" in pt:
+            self.loot_chest_count = int(pt.get("loot_chest_count") or 0)
+            if not self.loot_chest_count:
+                self._roll_loot_chest_count()
+        else:
+            self._roll_loot_chest_count()
+        self._build_hero_ranks()
+        if pt and "daily_quest_keys" in pt:
+            self.daily_quest_keys = list(pt.get("daily_quest_keys") or [])
+        else:
+            self.daily_quest_keys = []
+            if bool(self.options.daily_quests.value):
+                self.daily_quest_keys = roll_daily_quests(
+                    self.enabled_heroes, self.random, self.starting_heroes,
                 )
-        self.goal_location_names = self._goal_location_names()
+        self.daily_quest_location_names = [
+            daily_quest_location_name(key) for key in self.daily_quest_keys
+        ]
+        if self.daily_quest_keys:
+            self.daily_quest_location_names.append(
+                daily_quest_location_name(DAILY_QUESTS_COMPLETE)
+            )
+        if pt and pt.get("goal_location_names"):
+            self.goal_location_names = list(pt["goal_location_names"])
+        else:
+            self.goal_location_names = self._goal_location_names()
 
     def _roll_talent_requirements(self) -> None:
         """Assign random talent slots to a random subset of seed heroes."""
@@ -243,6 +360,40 @@ class HoTSWorld(World):
                     talent_location_name(hero, req["level"])
                 )
 
+    def _apply_party_and_credit_options(self, pt: dict[str, Any] | None) -> None:
+        if pt and "party_mode" in pt:
+            self.party_mode = bool(pt["party_mode"])
+        else:
+            self.party_mode = bool(self.options.party_mode.value)
+        if pt and pt.get("credit_mode"):
+            self.credit_mode = str(pt["credit_mode"])
+        else:
+            self.credit_mode = self.options.credit_mode.current_key
+        self.credit_mode = normalize_credit_mode(self.credit_mode)
+        if pt and pt.get("credit_names") is not None:
+            self.credit_names = [str(n).strip() for n in pt["credit_names"] if str(n).strip()]
+        else:
+            self.credit_names = [str(n).strip() for n in self.options.credit_names.value if str(n).strip()]
+        if self.credit_names and self.credit_mode == "me":
+            self.credit_mode = "team"
+        if pt and "include_ai" in pt:
+            self.include_ai = bool(pt["include_ai"])
+        else:
+            self.include_ai = bool(self.options.include_ai.value)
+        if self.party_mode:
+            if pt and "party_size" in pt:
+                self.party_size = int(pt.get("party_size") or 2)
+            else:
+                self.party_size = int(self.options.party_size.value)
+            if pt and "starting_waves" in pt:
+                self.starting_waves = int(pt.get("starting_waves") or 1)
+            else:
+                self.starting_waves = int(self.options.starting_waves.value)
+        else:
+            self.party_size = 1
+            self.starting_waves = 1
+        self.hero_waves = []
+
     def _starters_excluded_heroes(self) -> set[str]:
         """Keep goal heroes off the starting roster when the pool has other options."""
         if len(self.enabled_heroes) <= 1:
@@ -255,6 +406,9 @@ class HoTSWorld(World):
         return eligible if eligible else list(heroes)
 
     def _pick_starting_heroes(self) -> None:
+        if self.party_mode:
+            self._pick_party_waves()
+            return
         inv = {k: v for k, v in self.options.start_inventory.value.items() if v > 0}
         hero_inv = next((k for k in inv if k in ALL_HEROES), None)
         excluded = self._starters_excluded_heroes()
@@ -288,6 +442,7 @@ class HoTSWorld(World):
             self.starting_role_pass = None
             self.starting_heroes = starters
             self.starting_hero = hero_inv if hero_inv in starters else starters[0]
+            self.hero_waves = [list(starters)]
             return
 
         by_pass: dict[str, list[str]] = {}
@@ -330,13 +485,118 @@ class HoTSWorld(World):
         self.starting_role_pass = pass_key
         self.starting_heroes = starters
         self.starting_hero = hero_inv if hero_inv in starters else starters[0]
+        self.hero_waves = [list(starters)]
+
+    def _pick_mixed_role_wave(self, pool: list[str], size: int) -> list[str]:
+        """Random distinct roles; a role can repeat only after every available role is used."""
+        by_role: dict[str, list[str]] = {}
+        for hero in pool:
+            by_role.setdefault(get_role(hero), []).append(hero)
+        for heroes in by_role.values():
+            self.random.shuffle(heroes)
+        picked: list[str] = []
+        while len(picked) < size:
+            roles = [role for role, heroes in by_role.items() if heroes]
+            if not roles:
+                break
+            self.random.shuffle(roles)
+            for role in roles:
+                if len(picked) >= size:
+                    break
+                if by_role[role]:
+                    picked.append(by_role[role].pop())
+        leftover = [hero for hero in pool if hero not in picked]
+        self.random.shuffle(leftover)
+        while len(picked) < size and leftover:
+            picked.append(leftover.pop())
+        return picked
+
+    def _pick_party_waves(self) -> None:
+        party = max(2, min(5, int(self.party_size)))
+        waves_n = max(1, min(3, int(self.starting_waves)))
+        need = party * waves_n
+        if len(self.enabled_heroes) < party:
+            raise OptionError(
+                f"Party size is {party}, but the seed only has "
+                f"{len(self.enabled_heroes)} hero(es). Raise Hero Pool Size or enable more heroes."
+            )
+        if len(self.enabled_heroes) < need:
+            raise OptionError(
+                f"Party needs at least {need} heroes in the seed "
+                f"(party size {party} × starting waves {waves_n}), "
+                f"but only {len(self.enabled_heroes)} are included."
+            )
+        start_pool = self._eligible_starters(list(self.enabled_heroes))
+        if len(start_pool) < need:
+            start_pool = list(self.enabled_heroes)
+        inv = {k: v for k, v in self.options.start_inventory.value.items() if v > 0}
+        hero_inv = next((k for k in inv if k in start_pool), None)
+        waves: list[list[str]] = []
+        remaining = list(start_pool)
+        for wave_index in range(waves_n):
+            wave = self._pick_mixed_role_wave(remaining, party)
+            if wave_index == 0 and hero_inv and hero_inv in remaining and hero_inv not in wave:
+                same_role = next(
+                    (h for h in wave if get_role(h) == get_role(hero_inv)),
+                    wave[-1] if wave else None,
+                )
+                if same_role in wave:
+                    wave[wave.index(same_role)] = hero_inv
+            for hero in wave:
+                if hero in remaining:
+                    remaining.remove(hero)
+            waves.append(wave)
+        leftover = [hero for hero in self.enabled_heroes if hero not in {h for w in waves for h in w}]
+        while leftover:
+            if leftover and waves and len(leftover) < party:
+                extra = self._pick_mixed_role_wave(leftover, len(leftover))
+                waves[-1].extend(extra)
+                leftover = [hero for hero in leftover if hero not in extra]
+                break
+            wave = self._pick_mixed_role_wave(leftover, min(party, len(leftover)))
+            for hero in wave:
+                if hero in leftover:
+                    leftover.remove(hero)
+            waves.append(wave)
+        if len(waves) > MAX_HERO_WAVE:
+            raise OptionError(
+                f"Party produced {len(waves)} waves; max is {MAX_HERO_WAVE}."
+            )
+        self.hero_waves = waves
+        self.starting_heroes = [hero for wave in waves[:waves_n] for hero in wave]
+        self.starting_hero = self.starting_heroes[0]
+        self.starting_role_pass = None
+        self.party_size = party
+        self.starting_waves = waves_n
+
+    def _hero_wave_need_map(self) -> dict[str, int]:
+        """Copies of Progressive Hero Wave required to unlock each party hero."""
+        mapping: dict[str, int] = {}
+        if not self.party_mode:
+            return mapping
+        start_n = max(1, int(self.starting_waves))
+        for index, wave in enumerate(self.hero_waves):
+            need = progressive_waves_needed(index, start_n)
+            if need <= 0:
+                continue
+            for hero in wave:
+                mapping[hero] = need
+        return mapping
 
     def _roll_full_unlock_heroes(self) -> None:
-        """10–25% of seed heroes (min 1) use a full unlock item; others use shards."""
+        """10–25% of seed heroes (min 1) stay full unlock items whenever shards are used."""
+        if self.party_mode:
+            self.full_unlock_heroes = []
+            self.shard_heroes = []
+            return
         locked = [h for h in self.enabled_heroes if h not in self.starting_heroes]
         if not locked:
             self.full_unlock_heroes: list[str] = []
             self.shard_heroes: list[str] = []
+            return
+        if self.shards_to_unlock <= 0:
+            self.full_unlock_heroes = sorted(locked, key=hero_sort_key)
+            self.shard_heroes = []
             return
         pct = self.random.uniform(0.10, 0.25)
         count = max(1, round(len(self.enabled_heroes) * pct))
@@ -352,6 +612,13 @@ class HoTSWorld(World):
 
     def _build_hero_ranks(self) -> None:
         """Random shuffle used only to forbid unlock cycles in item rules — not a fixed unlock chain."""
+        if self.party_mode and self.hero_waves:
+            self.hero_rank = {
+                hero: wave_index
+                for wave_index, wave in enumerate(self.hero_waves)
+                for hero in wave
+            }
+            return
         starters = list(self.starting_heroes)
         self.random.shuffle(starters)
         other_heroes = [hero for hero in self.enabled_heroes if hero not in self.starting_heroes]
@@ -428,6 +695,7 @@ class HoTSWorld(World):
             shards_to_unlock=self.shards_to_unlock,
             daily_quest_keys=self.daily_quest_keys or None,
             starting_heroes=self.starting_heroes,
+            hero_wave_need=self._hero_wave_need_map() or None,
         )
 
         goal_locs = tuple(self.goal_location_names)
@@ -446,11 +714,17 @@ class HoTSWorld(World):
         total_locations += len(self.daily_quest_location_names)
         item_pool: list[Item] = []
 
-        for hero in self.full_unlock_heroes:
-            item_pool.append(self.create_item(hero))
-        for hero in self.shard_heroes:
-            for _ in range(self.shards_to_unlock):
-                item_pool.append(self.create_item(shard_item_name(hero)))
+        if self.party_mode:
+            start_n = max(1, int(self.starting_waves))
+            copies = max(0, len(self.hero_waves) - start_n)
+            for _ in range(copies):
+                item_pool.append(self.create_item(PROGRESSIVE_HERO_WAVE_NAME))
+        else:
+            for hero in self.full_unlock_heroes:
+                item_pool.append(self.create_item(hero))
+            for hero in self.shard_heroes:
+                for _ in range(self.shards_to_unlock):
+                    item_pool.append(self.create_item(shard_item_name(hero)))
 
         for slot, _quest_key in enumerate(self.daily_quest_keys, start=1):
             if slot == 1:
@@ -544,6 +818,8 @@ class HoTSWorld(World):
             if item.classification in (ItemClassification.filler, ItemClassification.trap):
                 return False
             if item.player == self.player and is_open_currency_item(item.name):
+                return False
+            if item.player == self.player and is_hero_wave_item(item.name):
                 return False
             return True
 
@@ -641,6 +917,14 @@ class HoTSWorld(World):
                 }
                 for slot, key in enumerate(self.daily_quest_keys, start=1)
             },
+            "party_mode": bool(self.party_mode),
+            "credit_mode": self.credit_mode,
+            "credit_names": list(self.credit_names),
+            "include_ai": bool(self.include_ai),
+            "party_size": int(self.party_size),
+            "starting_waves": int(self.starting_waves),
+            "hero_waves": [list(wave) for wave in self.hero_waves],
+            "hero_wave_need": self._hero_wave_need_map(),
             "locations": self.location_name_to_id,
             "items": self.item_name_to_id,
         }
@@ -679,6 +963,41 @@ class HoTSWorld(World):
             spoiler_handle.write(
                 f"Starting Heroes:                 {', '.join(self.starting_heroes)}\n"
             )
+        if self.party_mode:
+            spoiler_handle.write(
+                f"Party Mode:                      {self.party_size} players, "
+                f"{self.starting_waves} starting wave"
+                f"{'' if self.starting_waves == 1 else 's'}\n"
+            )
+            spoiler_handle.write(
+                "Role Passes:                    off (party mode)\n"
+            )
+            spoiler_handle.write(
+                "Shards:                         off (heroes unlock in waves)\n"
+            )
+            start_n = max(1, int(self.starting_waves))
+            total_prog = max(0, len(self.hero_waves) - start_n)
+            for index, wave in enumerate(self.hero_waves):
+                labels = ", ".join(
+                    f"{hero} ({role_display(get_role(hero))})" for hero in wave
+                )
+                need = progressive_waves_needed(index, start_n)
+                if need <= 0:
+                    spoiler_handle.write(
+                        f"Starting Wave {index + 1}:                {labels}\n"
+                    )
+                else:
+                    spoiler_handle.write(
+                        f"After {need}/{total_prog} {PROGRESSIVE_HERO_WAVE_NAME}:  {labels}\n"
+                    )
+        spoiler_handle.write(
+            f"Replay Scoring:                  {self.credit_mode}"
+        )
+        if self.credit_names:
+            spoiler_handle.write(f", only={', '.join(self.credit_names)}")
+        if self.include_ai:
+            spoiler_handle.write(", include AI")
+        spoiler_handle.write("\n")
         spoiler_handle.write(f"Goal Summary:                    {self._goal_summary_text()}\n")
         spoiler_handle.write(f"Goal Heroes:                     {', '.join(self.goal_heroes)}\n")
         spoiler_handle.write(f"Loot Chests:                     {self.loot_chest_count}\n")

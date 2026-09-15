@@ -2,10 +2,12 @@ from .Challenges import (
     get_pass_key, get_role, pass_name_for_key, role_display, pass_contributor_hint,
     HERO_CHECKS, XP_PASS_18K, XP_PASS_40K, PASS_XP_THRESHOLDS,
     CHECK_SCORE_THRESHOLDS, pass_location_name,
-    DAILY_QUESTS_COMPLETE, daily_quest_location_name,
+    DAILY_QUESTS_COMPLETE, DAILY_QUEST_UNLOCK_MIN, capable_heroes_in_pool,
+    daily_quest_location_name,
 )
 from .Locations import location_table
 from .Talents import TALENT_LEVELS, parse_talent_check_key, talent_req_is_any
+from .Items import PROGRESSIVE_HERO_WAVE_NAME, progressive_waves_needed
 
 
 class HoTSTracker:
@@ -15,11 +17,11 @@ class HoTSTracker:
     def has_hero_unlock(self, hero: str) -> bool:
         if hero in self.ctx.unlocked_heroes:
             return True
-        need = int(getattr(self.ctx, "shards_to_unlock", 5) or 5)
-        return getattr(self.ctx, "hero_shards", {}).get(hero, 0) >= need
+        need = int(getattr(self.ctx, "shards_to_unlock", 5) or 0)
+        return need > 0 and getattr(self.ctx, "hero_shards", {}).get(hero, 0) >= need
 
     def shard_progress(self, hero: str) -> tuple[int, int]:
-        need = int(getattr(self.ctx, "shards_to_unlock", 5) or 5)
+        need = int(getattr(self.ctx, "shards_to_unlock", 5) or 0)
         have = getattr(self.ctx, "hero_shards", {}).get(hero, 0)
         if hero in getattr(self.ctx, "full_unlock_heroes", []) or hero in self.ctx.starting_heroes:
             return (need if hero in self.ctx.unlocked_heroes else 0, need)
@@ -70,14 +72,24 @@ class HoTSTracker:
         if data.hero:
             return self.hero_unlocked(data.hero)
         if data.daily_quest_key:
-            has_slip_fn = getattr(self.ctx, "_has_daily_quest_slip", None)
             keys = list(getattr(self.ctx, "daily_quest_keys", None) or [])
             if data.daily_quest_key == DAILY_QUESTS_COMPLETE:
-                return bool(keys and has_slip_fn and all(has_slip_fn(k) for k in keys))
-            if keys and data.daily_quest_key == keys[0]:
-                return True
-            return bool(has_slip_fn and has_slip_fn(data.daily_quest_key))
+                return bool(keys) and all(self.daily_quest_in_logic(k) for k in keys)
+            return self.daily_quest_in_logic(data.daily_quest_key)
         return True
+
+    def daily_quest_in_logic(self, quest_key: str) -> bool:
+        """Match world rules: Daily Quest Unlock N plus 3 playable capable heroes."""
+        has_slip_fn = getattr(self.ctx, "_has_daily_quest_slip", None)
+        if not (has_slip_fn and has_slip_fn(quest_key)):
+            return False
+        defs = getattr(self.ctx, "daily_quest_defs", {}) or {}
+        cap = (defs.get(quest_key) or {}).get("capability")
+        if not cap:
+            return False
+        enabled = list(getattr(self.ctx, "enabled_heroes", []) or [])
+        heroes = capable_heroes_in_pool(cap, enabled)
+        return sum(1 for hero in heroes if self.hero_unlocked(hero)) >= DAILY_QUEST_UNLOCK_MIN
 
     def is_checked(self, loc_name: str) -> bool:
         data = location_table.get(loc_name)
@@ -85,9 +97,16 @@ class HoTSTracker:
             return False
         return data.id in self.ctx.checked_locations
 
+    def _progressive_wave_count(self) -> int:
+        return int(getattr(self.ctx, "progressive_hero_waves", 0) or 0)
+
     def _unlock_needs(self, hero: str) -> str:
         needs: list[str] = []
-        if not self.has_hero_unlock(hero):
+        wave_need = (getattr(self.ctx, "hero_wave_need", None) or {}).get(hero) or 0
+        if wave_need and not self.has_hero_unlock(hero):
+            have = self._progressive_wave_count()
+            needs.append(f"{PROGRESSIVE_HERO_WAVE_NAME} {min(have, wave_need)}/{wave_need}")
+        elif not self.has_hero_unlock(hero):
             have, need = self.shard_progress(hero)
             if hero in getattr(self.ctx, "shard_heroes", []):
                 needs.append(f"shards {have}/{need}")
@@ -143,12 +162,14 @@ class HoTSTracker:
     def print_status(self, output) -> None:
         sd = getattr(self.ctx, "slot_data", {}) or {}
         output("Heroes of the Storm — Status")
-        if self.ctx.starting_heroes:
+        if self.ctx.starting_heroes and not getattr(self.ctx, "party_mode", False):
             if len(self.ctx.starting_heroes) == 1:
                 output(f"Starting hero: {self.ctx.starting_heroes[0]}")
             else:
                 output(f"Starting heroes: {', '.join(self.ctx.starting_heroes)}")
         output(f"Goal: {sd.get('goal_summary', '?')}")
+        if getattr(self.ctx, "_print_credit_status", None):
+            self.ctx._print_credit_status(output)
         output(f"Unlocked heroes: {', '.join(self.unlocked_heroes()) or '(none)'}")
         output(f"Open checks: {len(self.accessible_missing())}")
         output(f"Checked: {len(self.ctx.checked_locations)}")
@@ -279,14 +300,13 @@ class HoTSTracker:
             return []
         totals = getattr(self.ctx, "daily_quest_totals", {}) or {}
         defs = getattr(self.ctx, "daily_quest_defs", {}) or {}
-        has_slip_fn = getattr(self.ctx, "_has_daily_quest_slip", None)
         rows: list[dict] = []
         for index, quest_key in enumerate(keys):
             info = defs.get(quest_key) or {}
             loc_name = daily_quest_location_name(quest_key)
             done = self.is_checked(loc_name)
-            has_slip = bool(has_slip_fn and has_slip_fn(quest_key))
-            if index > 0 and not has_slip and not done:
+            in_logic = self.daily_quest_in_logic(quest_key)
+            if index > 0 and not in_logic and not done:
                 continue
             title = (info.get("name") or loc_name).replace("Daily Quest: ", "")
             if done:
@@ -304,6 +324,10 @@ class HoTSTracker:
         return [{"text": "--- Daily Quests ---"}, *rows, {"text": ""}]
 
     def update_tracker_tab(self) -> None:
+        panel = getattr(self.ctx, "tracker_panel", None)
+        if panel is not None:
+            panel.refresh()
+            return
         tab = getattr(self.ctx, "tab_tracker", None)
         if not tab:
             return
@@ -324,16 +348,6 @@ class HoTSTracker:
         rows.extend(self._daily_quest_rows())
         pass_check_keys = sd.get("pass_check_keys", [])
         enabled_pass_keys = sd.get("enabled_pass_keys", [])
-
-        if self.ctx.use_role_passes and enabled_pass_keys:
-            rows.append({"text": "Role passes in seed:"})
-            for pass_key in enabled_pass_keys:
-                label = pass_name_for_key(pass_key)
-                if self.has_pass_unlock(pass_key):
-                    rows.append(self._line(f"  {label}", done=True))
-                else:
-                    rows.append({"text": f"  {label}"})
-            rows.append({"text": ""})
 
         _, by_hero = self._collect_open_checks()
 
@@ -399,7 +413,28 @@ class HoTSTracker:
             return
         rows: list[dict] = []
         if self.ctx.starting_heroes:
-            if len(self.ctx.starting_heroes) == 1:
+            if getattr(self.ctx, "hero_waves", None) and getattr(self.ctx, "party_mode", False):
+                start_n = max(1, int(getattr(self.ctx, "starting_waves", 1) or 1))
+                total = max(0, len(self.ctx.hero_waves) - start_n)
+                have = self._progressive_wave_count()
+                for index, wave in enumerate(self.ctx.hero_waves):
+                    labels = ", ".join(
+                        f"{hero} ({role_display(get_role(hero))})" for hero in wave
+                    )
+                    need = progressive_waves_needed(index, start_n)
+                    if need <= 0:
+                        rows.append({"text": f"Starting wave {index + 1}: {labels}"})
+                    elif have >= need:
+                        rows.append(self._line(
+                            f"After {need}/{total} {PROGRESSIVE_HERO_WAVE_NAME}: {labels}",
+                            done=True,
+                        ))
+                    else:
+                        rows.append({"text": (
+                            f"After {need}/{total} {PROGRESSIVE_HERO_WAVE_NAME}: {labels}"
+                            f" — {have}/{need} collected"
+                        )})
+            elif len(self.ctx.starting_heroes) == 1:
                 rows.append({"text": f"Starting hero: {self.ctx.starting_heroes[0]}"})
             else:
                 rows.append({"text": f"Starting heroes: {', '.join(self.ctx.starting_heroes)}"})
@@ -428,6 +463,10 @@ class HoTSTracker:
                 shard_txt = ", starting"
             elif hero in getattr(self.ctx, "full_unlock_heroes", []):
                 shard_txt = ", full unlock"
+            elif (getattr(self.ctx, "hero_wave_need", None) or {}).get(hero):
+                need_n = int(self.ctx.hero_wave_need[hero])
+                have_n = self._progressive_wave_count()
+                shard_txt = f", {PROGRESSIVE_HERO_WAVE_NAME} {min(have_n, need_n)}/{need_n}"
             else:
                 shard_txt = ""
             suffix = f" ({role_display(role)}, {self._hero_check_count(hero)} checks{shard_txt})"

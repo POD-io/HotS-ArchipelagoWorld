@@ -359,7 +359,7 @@ class TalentsPanel(ScrollView):
                 from CommonClient import logger as ap_logger
                 for line in lines:
                     if line.startswith("Failed"):
-                        ap_logger.warning(f"[HotS] {line}")
+                        ap_logger.warning(f"{line}")
             except Exception:
                 pass
         self._flash_export(btn, text_widget, ok=ok)

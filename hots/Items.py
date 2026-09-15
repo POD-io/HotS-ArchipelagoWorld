@@ -117,6 +117,28 @@ daily_quest_items: dict[str, HoTSItemData] = {
     for idx, name in enumerate(DAILY_QUEST_UNLOCK_ITEMS)
 }
 
+# One progressive item; each copy unlocks the next generated party wave.
+# Wave 1 (and extra Starting Waves) are precollected — no item.
+MAX_HERO_WAVE = 45
+PROGRESSIVE_HERO_WAVE_NAME = "Progressive Hero Wave"
+
+
+def progressive_waves_needed(wave_index: int, starting_waves: int) -> int:
+    """Copies of Progressive Hero Wave needed to unlock 0-based wave_index."""
+    return max(0, wave_index + 1 - max(1, int(starting_waves)))
+
+
+def is_hero_wave_item(name: str) -> bool:
+    return name == PROGRESSIVE_HERO_WAVE_NAME
+
+
+hero_wave_items: dict[str, HoTSItemData] = {
+    PROGRESSIVE_HERO_WAVE_NAME: HoTSItemData(
+        id=HOTS_ITEM_BASE + 500,
+        classification=ItemClassification.progression,
+    ),
+}
+
 item_table: dict[str, HoTSItemData] = {
     **hero_unlock_items,
     **hero_shard_items,
@@ -124,6 +146,7 @@ item_table: dict[str, HoTSItemData] = {
     **loot_economy_items,
     **daily_quest_items,
     **consumable_items,
+    **hero_wave_items,
 }
 
 
@@ -143,5 +166,7 @@ def is_loot_legendary_item(item_name: str) -> bool:
     if item_name in hero_unlock_items:
         return True
     if item_name in role_pass_items:
+        return True
+    if is_hero_wave_item(item_name):
         return True
     return False

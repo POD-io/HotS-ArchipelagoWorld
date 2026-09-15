@@ -15,6 +15,10 @@ from heroprotocol.versions import protocol96477
 GAMELOOP_PER_SECOND = 16
 
 
+HUMAN_CONTROL = 2
+AI_CONTROL = 3
+
+
 @dataclass
 class ReplayResult:
     map_name: str
@@ -28,6 +32,10 @@ class ReplayResult:
     level_history: list = field(default_factory=list)
     talent_picks: list = field(default_factory=list)
     pid: int = 0
+    team_id: int = 0
+    control: int = HUMAN_CONTROL
+    is_ai: bool = False
+    is_host: bool = False
 
 
 def normalize_toon_handle(handle: str | None) -> str | None:
@@ -44,6 +52,10 @@ def battle_tags_match(configured: str | None, replay_name: str | None) -> bool:
     if not configured or not replay_name:
         return False
     return configured.strip().lower() == replay_name.strip().lower()
+
+
+def battle_tags_match_any(configured: list[str] | None, replay_name: str | None) -> bool:
+    return any(battle_tags_match(tag, replay_name) for tag in (configured or []))
 
 
 def _b(v) -> str:
@@ -88,21 +100,30 @@ def _extract_players(tracker_events: list) -> dict:
     return players
 
 
-def _extract_details_by_slot(archive) -> tuple[dict[int, str], dict[int, str]]:
+def _extract_details_by_slot(archive) -> tuple[dict[int, str], dict[int, str], dict[int, dict]]:
     try:
         details = protocol96477.decode_replay_details(archive.read_file("replay.details"))
     except Exception:
-        return {}, {}
+        return {}, {}, {}
     names: dict[int, str] = {}
     heroes: dict[int, str] = {}
+    meta: dict[int, dict] = {}
     for slot in details.get("m_playerList", []):
         slot_id = slot.get("m_workingSetSlotId")
         if slot_id is None:
             continue
+        if int(slot.get("m_observe") or 0):
+            continue
         pid = slot_id + 1
         names[pid] = _b(slot.get("m_name", b""))
         heroes[pid] = _b(slot.get("m_hero", b""))
-    return names, heroes
+        control = int(slot.get("m_control") or 0)
+        meta[pid] = {
+            "control": control,
+            "team_id": int(slot.get("m_teamId") or 0),
+            "is_ai": control == AI_CONTROL,
+        }
+    return names, heroes, meta
 
 
 def _extract_map_name(tracker_events: list) -> str:
@@ -212,12 +233,102 @@ def find_player(
     return None
 
 
-def parse_replay(
-    path: str,
+def pick_host_result(
+    roster: list[ReplayResult],
+    *,
     toon_handle: str | None = None,
     player_name: str | None = None,
+    player_names: list[str] | None = None,
     hero_name: str | None = None,
 ) -> ReplayResult | None:
+    if not roster:
+        return None
+    target_toon = normalize_toon_handle(toon_handle)
+    if target_toon:
+        needle = target_toon.lower()
+        for row in roster:
+            stored = (normalize_toon_handle(row.toon_handle) or "").lower()
+            if stored == needle:
+                row.is_host = True
+                return row
+    names = [player_name, *(player_names or [])]
+    seen: set[str] = set()
+    for tag in names:
+        key = (tag or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        for row in roster:
+            if battle_tags_match(tag, row.player_name):
+                row.is_host = True
+                return row
+    if hero_name:
+        from .Challenges import hero_from_replay_name
+
+        target = hero_from_replay_name(hero_name) or hero_name
+        matches = [
+            row for row in roster
+            if (hero_from_replay_name(row.hero) or row.hero) == target
+        ]
+        if len(matches) == 1:
+            matches[0].is_host = True
+            return matches[0]
+    return None
+
+
+CREDIT_MODES = ("me", "team", "match")
+
+
+def normalize_credit_mode(mode: str | None) -> str:
+    value = (mode or "me").strip().lower()
+    return value if value in CREDIT_MODES else "me"
+
+
+def select_credited_results(
+    roster: list[ReplayResult],
+    host: ReplayResult | None,
+    *,
+    credit_mode: str = "me",
+    include_ai: bool = False,
+    credit_names: list[str] | None = None,
+) -> list[ReplayResult]:
+    mode = normalize_credit_mode(credit_mode)
+    names = [n.strip() for n in (credit_names or []) if str(n).strip()]
+
+    if mode == "me":
+        return [host] if host is not None else []
+    if mode == "team" and host is None:
+        return []
+
+    pool: list[ReplayResult] = []
+    for row in roster:
+        if mode == "team" and host is not None and row.team_id != host.team_id:
+            continue
+        if row.is_ai:
+            if include_ai:
+                pool.append(row)
+            continue
+        if names and not battle_tags_match_any(names, row.player_name):
+            continue
+        pool.append(row)
+
+    credited: list[ReplayResult] = []
+    seen_heroes: set[str] = set()
+    seen_pids: set[int] = set()
+    for row in pool:
+        if row.pid in seen_pids:
+            continue
+        hero_key = (row.hero or "").strip().lower()
+        if hero_key and hero_key in seen_heroes:
+            continue
+        seen_pids.add(row.pid)
+        if hero_key:
+            seen_heroes.add(hero_key)
+        credited.append(row)
+    return credited
+
+
+def parse_replay_roster(path: str) -> list[ReplayResult]:
     try:
         archive = mpyq.MPQArchive(path)
         raw_header = archive.header["user_data_header"]["content"]
@@ -226,60 +337,79 @@ def parse_replay(
             archive.read_file("replay.tracker.events")
         ))
     except Exception:
-        return None
+        return []
 
     if not tracker_events:
-        return None
+        return []
 
     duration_seconds = header.get("m_elapsedGameLoops", 0) // GAMELOOP_PER_SECOND
     players = _extract_players(tracker_events)
-    names, heroes_by_pid = _extract_details_by_slot(archive)
+    names, heroes_by_pid, meta_by_pid = _extract_details_by_slot(archive)
     map_name = _extract_map_name(tracker_events)
     score_by_pid = _extract_score(tracker_events)
     level_by_pid = _extract_level_history(tracker_events)
 
-    target_toon = normalize_toon_handle(toon_handle)
-    target_pid = find_player(
-        players,
-        names,
-        toon_handle=target_toon,
-        player_name=player_name,
-        hero_name=hero_name,
-        heroes=heroes_by_pid,
-    )
-    if target_pid is None:
-        return None
-
-    p = players[target_pid]
-    result_toon = normalize_toon_handle(p.get("toon_handle") or target_toon) or ""
-    talent_picks: list[tuple[int, int]] = []
+    talent_by_pid: dict[int, list] = {}
     try:
         game_events = list(protocol96477.decode_replay_game_events(
             archive.read_file("replay.game.events")
         ))
         user_map = _userid_by_toon(archive)
-        user_id = user_map.get(result_toon.lower()) if result_toon else None
-        talent_indices = _extract_talent_indices(game_events, user_id)
         from .Challenges import hero_from_replay_name
         from .Talents import picks_from_indices
 
-        hero_display = heroes_by_pid.get(target_pid, "")
-        hero_key = hero_from_replay_name(hero_display) or hero_display
-        if hero_key and talent_indices:
-            talent_picks = picks_from_indices(hero_key, talent_indices)
+        for pid, p in players.items():
+            toon = normalize_toon_handle(p.get("toon_handle")) or ""
+            if not toon:
+                continue
+            user_id = user_map.get(toon.lower())
+            talent_indices = _extract_talent_indices(game_events, user_id)
+            hero_display = heroes_by_pid.get(pid, "")
+            hero_key = hero_from_replay_name(hero_display) or hero_display
+            if hero_key and talent_indices:
+                talent_by_pid[pid] = picks_from_indices(hero_key, talent_indices)
     except Exception:
-        talent_picks = []
+        talent_by_pid = {}
 
-    return ReplayResult(
-        map_name=map_name,
-        duration_seconds=duration_seconds,
-        player_name=names.get(target_pid, f"Player {target_pid}"),
-        hero=heroes_by_pid.get(target_pid, ""),
-        hero_id=p.get("hero_id", ""),
-        toon_handle=result_toon,
-        result=p.get("result") or "Unknown",
-        score=score_by_pid.get(target_pid, {}),
-        level_history=level_by_pid.get(target_pid, []),
-        talent_picks=talent_picks,
-        pid=target_pid,
+    roster: list[ReplayResult] = []
+    pids = sorted(set(players) | set(names) | set(heroes_by_pid))
+    for pid in pids:
+        p = players.get(pid, {})
+        meta = meta_by_pid.get(pid, {})
+        hero_display = heroes_by_pid.get(pid, "")
+        if not hero_display and not names.get(pid):
+            continue
+        roster.append(ReplayResult(
+            map_name=map_name,
+            duration_seconds=duration_seconds,
+            player_name=names.get(pid, f"Player {pid}"),
+            hero=hero_display,
+            hero_id=p.get("hero_id", ""),
+            toon_handle=normalize_toon_handle(p.get("toon_handle")) or "",
+            result=p.get("result") or "Unknown",
+            score=score_by_pid.get(pid, {}),
+            level_history=level_by_pid.get(pid, []),
+            talent_picks=talent_by_pid.get(pid, []),
+            pid=pid,
+            team_id=int(meta.get("team_id") or 0),
+            control=int(meta.get("control") or 0),
+            is_ai=bool(meta.get("is_ai")),
+        ))
+    return roster
+
+
+def parse_replay(
+    path: str,
+    toon_handle: str | None = None,
+    player_name: str | None = None,
+    player_names: list[str] | None = None,
+    hero_name: str | None = None,
+) -> ReplayResult | None:
+    roster = parse_replay_roster(path)
+    return pick_host_result(
+        roster,
+        toon_handle=toon_handle,
+        player_name=player_name,
+        player_names=player_names,
+        hero_name=hero_name,
     )

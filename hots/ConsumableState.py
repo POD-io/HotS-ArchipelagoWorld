@@ -331,7 +331,7 @@ class ConsumableState:
         self._write_local()
         asyncio.create_task(self._push_add(self.ctx._stim_consumed_storage_key(), 1))
         logger.info(
-            f"[HotS] Stimpack used — next {self.stim_remaining} match"
+            f"Stimpack used — next {self.stim_remaining} match"
             f"{'' if self.stim_remaining == 1 else 'es'} "
             f"tallies count double "
             f"({self.stim_in_bag} left in bag)."
@@ -394,7 +394,7 @@ class ConsumableState:
             json.dumps(self.ctx.hero_talent_requirements),
         ))
         msg = (
-            f"[HotS] Talent Tome: {hero} Level {level} now accepts any pick "
+            f"Talent Tome: {hero} Level {level} now accepts any pick "
             f"({self.tomes_in_bag} tome{'' if self.tomes_in_bag == 1 else 's'} left)."
         )
         logger.info(msg)
