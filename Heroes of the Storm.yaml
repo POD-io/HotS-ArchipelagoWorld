@@ -34,7 +34,7 @@ game: Heroes of the Storm
 requires:
   version: 0.6.7 # Version of Archipelago required for this yaml to work as expected.
   game:
-    Heroes of the Storm: 0.5.1 # Version of the world required for this yaml to work as expected.
+    Heroes of the Storm: 0.6.1 # Version of the world required for this yaml to work as expected.
 
 Heroes of the Storm:
   ################
