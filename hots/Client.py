@@ -22,7 +22,7 @@ from .Challenges import (
     hero_from_replay_name, location_name, score_fields_for_check_keys, HERO_TO_YAML_KEY,
     get_pass_key, pass_key_from_item_name, pass_location_name, pass_name_for_key,
     XP_PASS_18K, XP_PASS_40K, TIMED_WIN_18, PASS_XP_THRESHOLDS, CHECK_SCORE_THRESHOLDS,
-    CAPABILITY_HEROES, DAILY_QUESTS_COMPLETE, DAILY_QUEST_UNLOCK_MIN,
+    DAILY_QUESTS_COMPLETE, DAILY_QUEST_UNLOCK_MIN,
     capable_heroes_in_pool,
     daily_quest_item_name, daily_quest_slot_from_item_name,
     daily_quest_location_name,
@@ -955,7 +955,7 @@ class HoTSClient(CommonContext):
                 break
         logger.info(f"Daily quest unlocked: {qname}")
 
-    async def _credit_daily_quests(self, hero: str, score: dict) -> list[int]:
+    async def _credit_daily_quests(self, _hero: str, score: dict) -> list[int]:
         if not self.daily_quest_keys:
             return []
         for quest_key in self.daily_quest_keys:
@@ -966,8 +966,7 @@ class HoTSClient(CommonContext):
                 continue
             if not self._has_daily_quest_slip(quest_key):
                 continue
-            if hero not in CAPABILITY_HEROES.get(cap, frozenset()):
-                continue
+            # Any unlocked credited hero may contribute.
             amount = int(score.get(field, 0) or 0)
             if amount <= 0:
                 continue
