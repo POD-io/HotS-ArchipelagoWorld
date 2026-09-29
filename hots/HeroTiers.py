@@ -1324,6 +1324,17 @@ HERO_CAPABILITY_CHECKS = {
         "can_regen_globe": "regen_globes_15",
         "can_level_20": "level_20"
     },
+    "Xal'atath": {
+        "can_win": "win",
+        "can_takedown": "takedowns_5",
+        "can_hero_damage": "hero_25k",
+        "can_siege": "siege_50k",
+        "can_solo_kill": "solo_kill_2",
+        "can_minion": "minion_35",
+        "can_assist": "assists_3",
+        "can_regen_globe": "regen_globes_15",
+        "can_level_20": "level_20"
+    },
     "Xul": {
         "can_win": "win",
         "can_takedown": "takedowns_7",

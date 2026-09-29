@@ -63,6 +63,7 @@ HERO_ROLES: dict[str, str] = {
     "Raynor": "ranged_assassin", "Sgt. Hammer": "ranged_assassin", "Sylvanas": "ranged_assassin",
     "Tassadar": "ranged_assassin",
     "Tracer": "ranged_assassin", "Tychus": "ranged_assassin", "Valla": "ranged_assassin",
+    "Xal'atath": "ranged_assassin",
     "Zagara": "ranged_assassin", "Zul'jin": "ranged_assassin",
 }
 
@@ -217,6 +218,7 @@ _YAML_KEY_OVERRIDES: dict[str, str] = {
     "Sgt. Hammer":        "SgtHammer",
     "The Butcher":        "TheButcher",
     "The Lost Vikings":   "TheLostVikings",
+    "Xal'atath":          "Xalatath",
     "Zul'jin":            "Zuljin",
 }
 

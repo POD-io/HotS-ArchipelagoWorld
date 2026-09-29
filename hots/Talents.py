@@ -47,6 +47,7 @@ TALENT_COUNT_EXCEPTIONS: dict[str, dict[int, int]] = {
     "Tyrael": {20: 5},
     "Valeera": {1: 4, 4: 4},
     "Varian": {20: 5},
+    "Xal'atath": {20: 5},  # live 2026-09-28: 5 L20s; L20 #1/#2 upgrade L10 heroics
     "Zarya": {1: 4, 4: 4, 13: 4},
 }
 
